@@ -1,0 +1,51 @@
+name: API Checks
+
+# Runs on PRs to develop and master. Pushes to master are covered by
+# deploy.yml, which calls this workflow before deploying, so they aren't
+# listed here to avoid a duplicate run.
+on:
+  pull_request:
+    branches: [develop, master]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to check (defaults to the triggering ref)'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile all modules
+        run: python -m compileall -q app
+
+      - name: Verify the app imports cleanly
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/dummy
+          SECRET_KEY: dummy-secret-for-ci
+        run: python -c "from app.main import app"
