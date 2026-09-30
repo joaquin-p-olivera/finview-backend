@@ -7,6 +7,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Requests no longer hang and fail after the API has been idle for a few minutes (e.g. adding items to a cart): the database engine now checks pooled connections before use (`pool_pre_ping`), recycles them, uses a connect timeout and TCP keepalives. ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
+
+### Added
+
+- `Keep API awake` workflow (`.github/workflows/keep-alive.yml`) that pings `/health` every 10 minutes during the day so the Render free instance doesn't sleep, and `/health` now also answers `HEAD`. ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
+
 ## [1.1.0] - 30 Sep 2026
 
 ### Changed
