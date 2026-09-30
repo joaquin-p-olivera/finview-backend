@@ -1,14 +1,12 @@
 name: Deploy to Render
 
-# Every push to master runs the checks and, if they pass, deploys that exact
-# commit to Render. Render's own auto-deploy should be turned off for this
-# service so it doesn't deploy twice (or deploy a commit whose checks failed).
-#
-# It can also be run by hand to deploy any branch at its current commit,
-# which lets a branch be tried in production before merging.
+# Manual only: run it by hand (Actions -> Deploy to Render -> Run workflow)
+# to deploy a branch at its current commit, usually master after a release.
+# It runs the checks and, if they pass, deploys that exact commit to Render.
+# Render's own auto-deploy should be turned off for this service so merges
+# don't deploy on their own. Any branch can be deployed, which lets a branch
+# be tried in production before merging.
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
       branch:
@@ -20,7 +18,7 @@ on:
         required: false
         default: ''
 
-# Deploys queue up instead of cancelling each other, so the last push wins
+# Deploys queue up instead of cancelling each other, so the last run wins
 # without leaving Render mid-deploy.
 concurrency:
   group: deploy-production
@@ -37,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Guard against accidental non-master deploys
-        if: github.event_name == 'workflow_dispatch' && inputs.branch != 'master' && inputs.confirm_non_master != 'yes'
+        if: inputs.branch != 'master' && inputs.confirm_non_master != 'yes'
         run: |
           echo "::error::Deploying a branch other than master requires confirm_non_master set to 'yes'."
           exit 1
@@ -46,7 +44,7 @@ jobs:
     needs: guard
     uses: ./.github/workflows/checks.yml
     with:
-      ref: ${{ inputs.branch || github.sha }}
+      ref: ${{ inputs.branch }}
 
   deploy:
     needs: checks
@@ -55,7 +53,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ inputs.branch }}
 
       - name: Resolve commit SHA
         id: sha
