@@ -9,7 +9,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Requests no longer hang and fail after the API has been idle for a few minutes (e.g. adding items to a cart): the database engine now checks pooled connections before use (`pool_pre_ping`), recycles them, uses a connect timeout and TCP keepalives. ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
+- A request no longer fails with a 500 when its pooled database connection was closed while the API sat idle: the database engine now checks pooled connections before use (`pool_pre_ping`), recycles them, uses a connect timeout and TCP keepalives. ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
 - `GET /api/v1/purchase/stats` no longer fails with a 500 (`text` was used without being imported in the by-month query), so purchase stats show real data again; months are now returned oldest first. ([#28](https://github.com/joaquin-p-olivera/finview-backend/pull/28))
 
 ### Added
