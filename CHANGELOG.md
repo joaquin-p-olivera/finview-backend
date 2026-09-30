@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The production deploy workflow (`Deploy to Render`, `.github/workflows/deploy.yml`) is now manual-only: it no longer runs on every push to `master` and is started by hand from the Actions tab (`workflow_dispatch`), as in trip-trace-api. ([#25](https://github.com/joaquin-p-olivera/finview-backend/pull/25))
+
 ## [1.0.0] - 30 Sep 2026
 
 ### Added
