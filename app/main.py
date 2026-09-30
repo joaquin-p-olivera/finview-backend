@@ -29,7 +29,9 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
+# Accepts HEAD too so uptime monitors (which often send HEAD) can ping it to
+# keep the Render free instance awake. It doesn't touch the database.
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     return {"status": "ok"}
 
