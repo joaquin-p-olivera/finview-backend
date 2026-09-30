@@ -1,10 +1,11 @@
 name: API Checks
 
-# Pushes to master are covered by deploy.yml, which calls this workflow
-# before deploying, so they aren't listed here to avoid a duplicate run.
+# Runs on PRs to develop and master. Pushes to master are covered by
+# deploy.yml, which calls this workflow before deploying, so they aren't
+# listed here to avoid a duplicate run.
 on:
   pull_request:
-    branches: [master]
+    branches: [develop, master]
   workflow_dispatch:
   workflow_call:
     inputs:
