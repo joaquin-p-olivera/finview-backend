@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `GET /api/v1/purchase/stats` no longer fails with a 500 (`text` was used without being imported in the by-month query), so purchase stats show real data again; months are now returned oldest first. ([#28](https://github.com/joaquin-p-olivera/finview-backend/pull/28))
+
 ## [1.1.0] - 30 Sep 2026
 
 ### Changed
