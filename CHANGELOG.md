@@ -7,6 +7,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The production deploy workflow (`Deploy to Render`, `.github/workflows/deploy.yml`) is now manual-only: it no longer runs on every push to `master` and is started by hand from the Actions tab (`workflow_dispatch`), as in trip-trace-api. ([#25](https://github.com/joaquin-p-olivera/finview-backend/pull/25))
+
+## [1.0.0] - 30 Sep 2026
+
 ### Added
 
 - CI: every PR to `develop` or `master` now runs `API Checks / check` (`.github/workflows/checks.yml`) — installs `requirements.txt` on Python 3.12, compiles every module and imports `app.main` with dummy `DATABASE_URL`/`SECRET_KEY`, so a broken import or dependency fails the PR instead of the deploy. Also runnable by hand, and reused by the deploy workflow. ([#13](https://github.com/joaquin-p-olivera/finview-backend/pull/13))
