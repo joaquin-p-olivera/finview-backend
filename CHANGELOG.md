@@ -7,9 +7,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 30 Sep 2026
+
 ### Changed
 
 - The production deploy workflow (`Deploy to Render`, `.github/workflows/deploy.yml`) is now manual-only: it no longer runs on every push to `master` and is started by hand from the Actions tab (`workflow_dispatch`), as in trip-trace-api. ([#25](https://github.com/joaquin-p-olivera/finview-backend/pull/25))
+- Bumped `pydantic` from 2.13.4 to 2.13.5. ([#17](https://github.com/joaquin-p-olivera/finview-backend/pull/17))
+- Bumped `uvicorn` from 0.52.4 to 0.54.0. ([#16](https://github.com/joaquin-p-olivera/finview-backend/pull/16))
+- Bumped `alembic` from 1.19.1 to 1.20.0. ([#19](https://github.com/joaquin-p-olivera/finview-backend/pull/19))
+- Bumped `psycopg2-binary` from 2.9.12 to 2.9.13. ([#20](https://github.com/joaquin-p-olivera/finview-backend/pull/20))
+- Bumped `pymysql` from 1.2.0 to 1.2.3. ([#22](https://github.com/joaquin-p-olivera/finview-backend/pull/22))
+- Raised the minimum `pillow` version from 10.0.0 to 12.3.0. ([#15](https://github.com/joaquin-p-olivera/finview-backend/pull/15))
 
 ## [1.0.0] - 30 Sep 2026
 
