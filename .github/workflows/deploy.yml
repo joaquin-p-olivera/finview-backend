@@ -1,0 +1,73 @@
+name: Deploy to Render
+
+# Every push to master runs the checks and, if they pass, deploys that exact
+# commit to Render. Render's own auto-deploy should be turned off for this
+# service so it doesn't deploy twice (or deploy a commit whose checks failed).
+#
+# It can also be run by hand to deploy any branch at its current commit,
+# which lets a branch be tried in production before merging.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'master'
+      confirm_non_master:
+        description: 'Type "yes" to confirm — only required when branch is not master'
+        required: false
+        default: ''
+
+# Deploys queue up instead of cancelling each other, so the last push wins
+# without leaving Render mid-deploy.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Deploying master needs no extra step (the common case); deploying
+  # anything else needs a deliberate "yes", so a typo in the branch field
+  # fails closed instead of deploying the wrong thing.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard against accidental non-master deploys
+        if: github.event_name == 'workflow_dispatch' && inputs.branch != 'master' && inputs.confirm_non_master != 'yes'
+        run: |
+          echo "::error::Deploying a branch other than master requires confirm_non_master set to 'yes'."
+          exit 1
+
+  checks:
+    needs: guard
+    uses: ./.github/workflows/checks.yml
+    with:
+      ref: ${{ inputs.branch || github.sha }}
+
+  deploy:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.branch || github.sha }}
+
+      - name: Resolve commit SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Render's Deploy Hook with `ref=` deploys that exact commit.
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::The RENDER_DEPLOY_HOOK_URL secret is not set."
+            exit 1
+          fi
+          curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${{ steps.sha.outputs.sha }}"
