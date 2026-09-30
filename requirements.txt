@@ -13,4 +13,4 @@ email-validator==2.3.0
 google-generativeai==0.8.6
 openai>=1.0.0
 pdf2image>=1.17.0
-Pillow>=10.0.0
+Pillow>=12.3.0
