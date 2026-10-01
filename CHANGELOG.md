@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Bump `openai` requirement from `>=1.0.0` to `>=3.19.2`. ([#18](https://github.com/joaquin-p-olivera/finview-backend/pull/18))
+
 ## [1.2.0] - 30 Sep 2026
 
 ### Added
