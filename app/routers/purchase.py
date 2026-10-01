@@ -880,10 +880,12 @@ def get_purchase_stats(
     )
 
     # By month
+    year_col = func.extract('year', PurchaseCart.completed_at)
+    month_col = func.extract('month', PurchaseCart.completed_at)
     by_month = (
         db.query(
-            func.extract('year', PurchaseCart.completed_at).label("year"),
-            func.extract('month', PurchaseCart.completed_at).label("month"),
+            year_col.label("year"),
+            month_col.label("month"),
             func.sum(PurchaseCart.total).label("total"),
             func.count(PurchaseCart.id).label("count"),
         )
@@ -892,8 +894,8 @@ def get_purchase_stats(
             PurchaseCart.is_active == False,
             PurchaseCart.completed_at >= cutoff_date,
         )
-        .group_by("year", "month")
-        .order_by(text("year DESC, month DESC"))
+        .group_by(year_col, month_col)
+        .order_by(year_col, month_col)
         .all()
     )
 
