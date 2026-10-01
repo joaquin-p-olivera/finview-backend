@@ -14,7 +14,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `Keep API awake` workflow (`.github/workflows/keep-alive.yml`) that pings `/health` every 10 minutes during the day so the Render free instance doesn't sleep, and `/health` now also answers `HEAD`. ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
+- `Keep API awake` workflow (`.github/workflows/keep-alive.yml`) that pings `/health` every 10 minutes on Fridays, Saturdays and Sundays from 09:00 to 21:00 (Uruguay time) so the Render free instance doesn't sleep, and `/health` now also answers `HEAD`. ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
+- Writes (`POST`, `PUT`, `PATCH`, `DELETE`) accept an `Idempotency-Key` header: a retry with the same key within 10 minutes gets the original response instead of running again, so the frontend can safely retry a write whose response was lost (e.g. adding a product to a cart). ([#29](https://github.com/joaquin-p-olivera/finview-backend/pull/29))
 
 ## [1.1.0] - 30 Sep 2026
 
