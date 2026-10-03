@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class PurchaseCategoryBase(BaseModel):
@@ -56,12 +56,36 @@ class PurchaseCartItemRead(PurchaseCartItemBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PurchaseCartBase(BaseModel):
-    store_name: str
+class PurchaseStoreBase(BaseModel):
+    name: str
 
 
-class PurchaseCartCreate(PurchaseCartBase):
+class PurchaseStoreCreate(PurchaseStoreBase):
     pass
+
+
+class PurchaseStoreUpdate(BaseModel):
+    name: Optional[str] = None
+
+
+class PurchaseStoreRead(PurchaseStoreBase):
+    id: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseCartCreate(BaseModel):
+    # Either a store from the user's list, or a name: an unknown name is added
+    # to the list (see create_cart).
+    store_id: Optional[str] = None
+    store_name: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_store(self):
+        if not self.store_id and not (self.store_name and self.store_name.strip()):
+            raise ValueError("store_id or store_name is required")
+        return self
 
 
 class PurchaseCartUpdate(BaseModel):
@@ -69,8 +93,10 @@ class PurchaseCartUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class PurchaseCartRead(PurchaseCartBase):
+class PurchaseCartRead(BaseModel):
     id: str
+    store_id: Optional[str] = None
+    store_name: Optional[str] = None
     user_id: str
     is_active: bool
     total: float
