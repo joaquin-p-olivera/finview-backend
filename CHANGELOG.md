@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Per-user list of supermarkets for carts: `GET/POST /api/v1/purchase/stores` and `PUT/DELETE /api/v1/purchase/stores/{id}`. `POST /api/v1/purchase/carts` now takes a `store_id` from that list or a `store_name`, which is matched ignoring case and added to the list when new, so every cart of the same store has the same name. Renaming a store renames its carts; deleting it keeps their name. Needs `sql/2026-10-03-purchase-stores.sql` run on the database before deploying. ([#39](https://github.com/joaquin-p-olivera/finview-backend/pull/39))
+
 ### Removed
 
 - `Keep API awake` workflow: GitHub dropped most of its scheduled runs (about one every 3-4 hours instead of every 10 minutes), so the `/health` pings now come from an external cron service (cron-job.org) with the same Friday to Sunday 09:00-21:00 Uruguay schedule. ([#40](https://github.com/joaquin-p-olivera/finview-backend/pull/40))

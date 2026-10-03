@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -27,6 +27,29 @@ class PurchaseCategory(Base):
     )
 
 
+class PurchaseStore(Base):
+    __tablename__ = "purchase_stores"
+    # One name per user, ignoring case and surrounding spaces. There are no
+    # migrations: the table and index are created by hand (see AGENTS.md).
+    __table_args__ = (
+        Index("uq_purchase_store_name", "user_id", func.lower(func.btrim("name")), unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class PurchaseCart(Base):
     __tablename__ = "purchase_carts"
 
@@ -37,6 +60,14 @@ class PurchaseCart(Base):
         String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    # store_name keeps a copy of the store's name, so stats and history keep
+    # it even if the store is deleted from the list (store_id becomes NULL).
+    store_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("purchase_stores.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     store_name: Mapped[str | None] = mapped_column(String(100), nullable=True)

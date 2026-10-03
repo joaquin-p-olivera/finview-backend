@@ -88,6 +88,9 @@ app/
 | `purchase_lists` | Shopping lists (planning) |
 | `purchase_list_items` | Items in lists |
 | `purchase_categories` | Categories for purchases |
+| `purchase_stores` | User's list of supermarkets; `purchase_carts.store_id` points here and `store_name` keeps a copy of the name |
+
+There is no `create_all` at startup. Schema changes are SQL scripts in `sql/`, run by hand on Postgres (Render) before deploying the code that needs them.
 
 ## Core API Endpoints
 
@@ -130,7 +133,8 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 1. **Shopping Cart**: Only 1 active cart at a time per user
 2. **Shopping Lists**: User can have N lists for pre-shopping planning
 3. **Categories**: Independent from expense categories, manually created
-4. **Flow**: Add items from list → checkbox prompts for price/quantity → adds to cart
+4. **Stores**: Each cart belongs to a supermarket from the user's editable list
+5. **Flow**: Add items from list → checkbox prompts for price/quantity → adds to cart
 
 ### API Endpoints
 
@@ -138,9 +142,13 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 |--------|----------|-------------|
 | GET | `/purchase/categories` | List categories |
 | POST | `/purchase/categories` | Create category |
+| GET | `/purchase/stores` | List the user's supermarkets, most used first |
+| POST | `/purchase/stores` | Create a supermarket (names are unique per user, ignoring case) |
+| PUT | `/purchase/stores/{id}` | Rename a supermarket; also renames `store_name` on its carts |
+| DELETE | `/purchase/stores/{id}` | Delete a supermarket; its carts keep their `store_name` and get `store_id = NULL` |
 | GET | `/purchase/carts` | List carts (with pagination) |
 | GET | `/purchase/carts/active` | Get active cart |
-| POST | `/purchase/carts` | Create cart |
+| POST | `/purchase/carts` | Create cart with `store_id` (from the list) or `store_name` (matched against the list ignoring case, and added to it if new) |
 | GET | `/purchase/carts/{id}` | Get cart details |
 | POST | `/purchase/carts/{id}/items` | Add item to cart. Accepts an optional client-generated `id` (UUID): re-sending the same id returns the existing item instead of adding it twice, so the frontend can queue adds made without signal and retry them safely |
 | POST | `/purchase/carts/{id}/complete` | Complete cart |

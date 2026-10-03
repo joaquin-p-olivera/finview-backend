@@ -15,6 +15,7 @@ from ..models.purchase import (
     PurchaseCategory,
     PurchaseList,
     PurchaseListItem,
+    PurchaseStore,
 )
 from ..models.user import User
 from ..schemas.purchase import (
@@ -34,6 +35,9 @@ from ..schemas.purchase import (
     PurchaseListRead,
     PurchaseListUpdate,
     PurchaseListWithItems,
+    PurchaseStoreCreate,
+    PurchaseStoreRead,
+    PurchaseStoreUpdate,
 )
 
 
@@ -152,6 +156,112 @@ def delete_category(
     return None
 
 
+# ============== STORES ==============
+
+
+def _find_store_by_name(db: Session, user_id: str, name: str) -> PurchaseStore | None:
+    return (
+        db.query(PurchaseStore)
+        .filter(
+            PurchaseStore.user_id == user_id,
+            func.lower(func.btrim(PurchaseStore.name)) == name.strip().lower(),
+        )
+        .first()
+    )
+
+
+def _get_user_store(db: Session, user_id: str, store_id: str) -> PurchaseStore:
+    store = (
+        db.query(PurchaseStore)
+        .filter(PurchaseStore.id == store_id, PurchaseStore.user_id == user_id)
+        .first()
+    )
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supermercado no encontrado")
+    return store
+
+
+@router.get("/stores", response_model=List[PurchaseStoreRead])
+def list_stores(db: DbDep, current_user: CurrentUserDep):
+    # Most used first, so the cart form shows the usual stores on top.
+    cart_count = func.count(PurchaseCart.id)
+    rows = (
+        db.query(PurchaseStore, cart_count)
+        .outerjoin(PurchaseCart, PurchaseCart.store_id == PurchaseStore.id)
+        .filter(PurchaseStore.user_id == str(current_user.id))
+        .group_by(PurchaseStore.id)
+        .order_by(cart_count.desc(), PurchaseStore.name)
+        .all()
+    )
+    return [store for store, _ in rows]
+
+
+@router.post("/stores", response_model=PurchaseStoreRead, status_code=status.HTTP_201_CREATED)
+def create_store(
+    store_in: PurchaseStoreCreate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    name = store_in.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre no puede estar vacío")
+    if _find_store_by_name(db, str(current_user.id), name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya tenés un supermercado con ese nombre",
+        )
+    store = PurchaseStore(user_id=str(current_user.id), name=name)
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return store
+
+
+@router.put("/stores/{store_id}", response_model=PurchaseStoreRead)
+def update_store(
+    store_id: UUID,
+    store_update: PurchaseStoreUpdate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    store = _get_user_store(db, str(current_user.id), str(store_id))
+
+    if store_update.name is not None:
+        name = store_update.name.strip()
+        if not name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre no puede estar vacío")
+        existing = _find_store_by_name(db, str(current_user.id), name)
+        if existing and existing.id != store.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya tenés otro supermercado con ese nombre",
+            )
+        store.name = name
+        # Carts keep a copy of the name: rename them too so every cart of this
+        # store shows the same name.
+        db.query(PurchaseCart).filter(PurchaseCart.store_id == store.id).update(
+            {PurchaseCart.store_name: name}, synchronize_session=False
+        )
+
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return store
+
+
+@router.delete("/stores/{store_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_store(
+    store_id: UUID,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    store = _get_user_store(db, str(current_user.id), str(store_id))
+    # Carts keep their store_name; the FK sets their store_id to NULL.
+    db.delete(store)
+    db.commit()
+    return None
+
+
 # ============== CARTS ==============
 
 
@@ -208,6 +318,7 @@ def get_active_cart(db: DbDep, current_user: CurrentUserDep):
     return PurchaseCartWithItems(
         id=cart.id,
         user_id=cart.user_id,
+        store_id=cart.store_id,
         store_name=cart.store_name,
         is_active=cart.is_active,
         total=float(cart.total),
@@ -239,9 +350,19 @@ def create_cart(
             detail="Ya tenés un carrito activo. Finalizá o cancelá el actual antes de crear uno nuevo.",
         )
 
+    if cart_in.store_id:
+        store = _get_user_store(db, str(current_user.id), cart_in.store_id)
+    else:
+        store = _find_store_by_name(db, str(current_user.id), cart_in.store_name)
+        if not store:
+            store = PurchaseStore(user_id=str(current_user.id), name=cart_in.store_name.strip())
+            db.add(store)
+            db.flush()
+
     cart = PurchaseCart(
         user_id=str(current_user.id),
-        store_name=cart_in.store_name,
+        store_id=store.id,
+        store_name=store.name,
         is_active=True,
         total=0,
     )
@@ -293,6 +414,7 @@ def get_cart(
     return PurchaseCartWithItems(
         id=cart.id,
         user_id=cart.user_id,
+        store_id=cart.store_id,
         store_name=cart.store_name,
         is_active=cart.is_active,
         total=float(cart.total),
