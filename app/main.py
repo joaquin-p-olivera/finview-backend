@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Finview - Analizador de gastos", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="Finview - Analizador de gastos", version="1.3.0", lifespan=lifespan)
 
 # Added before CORS so it runs inside it: replayed responses still get CORS headers.
 app.add_middleware(IdempotencyMiddleware)
