@@ -15,6 +15,8 @@ from ..models.purchase import (
     PurchaseCategory,
     PurchaseList,
     PurchaseListItem,
+    PurchaseProduct,
+    PurchaseProductAlias,
     PurchaseStore,
 )
 from ..models.user import User
@@ -35,10 +37,15 @@ from ..schemas.purchase import (
     PurchaseListRead,
     PurchaseListUpdate,
     PurchaseListWithItems,
+    PurchaseProductLinkResult,
+    PurchaseProductMerge,
+    PurchaseProductRead,
+    PurchaseProductUpdate,
     PurchaseStoreCreate,
     PurchaseStoreRead,
     PurchaseStoreUpdate,
 )
+from ..services import purchase_products
 
 
 router = APIRouter(prefix="/api/v1/purchase", tags=["purchase"])
@@ -151,9 +158,196 @@ def delete_category(
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoría no encontrada")
 
+    # Products and items lose the category (ON DELETE SET NULL); clear how it
+    # was set too.
+    db.query(PurchaseCartItem).filter(PurchaseCartItem.category_id == category.id).update(
+        {PurchaseCartItem.categorized_by: None}, synchronize_session=False
+    )
+    db.query(PurchaseProduct).filter(PurchaseProduct.category_id == category.id).update(
+        {PurchaseProduct.category_source: None}, synchronize_session=False
+    )
     db.delete(category)
     db.commit()
     return None
+
+
+def _get_user_category(db: Session, user_id: str, category_id: str) -> PurchaseCategory:
+    category = (
+        db.query(PurchaseCategory)
+        .filter(PurchaseCategory.id == category_id, PurchaseCategory.user_id == user_id)
+        .first()
+    )
+    if not category:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoría no encontrada")
+    return category
+
+
+# ============== PRODUCTS ==============
+
+
+def _get_user_product(db: Session, user_id: str, product_id: str) -> PurchaseProduct:
+    product = (
+        db.query(PurchaseProduct)
+        .filter(PurchaseProduct.id == product_id, PurchaseProduct.user_id == user_id)
+        .first()
+    )
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
+    return product
+
+
+def _products_read(db: Session, user_id: str, products: list[PurchaseProduct]) -> list[PurchaseProductRead]:
+    """Products with what was paid for them: times bought, prices and the
+    last purchase. A user has a few hundred items, so they're summed here."""
+    ids = [p.id for p in products]
+    stats: dict[str, dict] = {pid: {"times": 0, "total": 0.0, "prices": [], "last": None} for pid in ids}
+    aliases: dict[str, list[str]] = {pid: [] for pid in ids}
+    if ids:
+        rows = (
+            db.query(PurchaseCartItem, PurchaseCart.store_name, PurchaseCart.completed_at)
+            .join(PurchaseCart, PurchaseCartItem.cart_id == PurchaseCart.id)
+            .filter(PurchaseCartItem.product_id.in_(ids))
+            .all()
+        )
+        for item, store_name, completed_at in rows:
+            entry = stats[item.product_id]
+            price = float(item.price)
+            entry["times"] += 1
+            entry["total"] += price * item.quantity
+            # Items brought from a shopping list start with price 0.
+            if price > 0:
+                entry["prices"].append(price)
+                bought_at = completed_at or item.created_at
+                if entry["last"] is None or bought_at > entry["last"][0]:
+                    entry["last"] = (bought_at, price, store_name)
+        for alias in db.query(PurchaseProductAlias).filter(PurchaseProductAlias.product_id.in_(ids)):
+            aliases[alias.product_id].append(alias.alias_key)
+
+    categories = {
+        c.id: c.name
+        for c in db.query(PurchaseCategory).filter(PurchaseCategory.user_id == user_id).all()
+    }
+    result = []
+    for p in products:
+        entry = stats[p.id]
+        last = entry["last"]
+        result.append(
+            PurchaseProductRead(
+                id=p.id,
+                name=p.name,
+                category_id=p.category_id,
+                category_name=categories.get(p.category_id) if p.category_id else None,
+                category_source=p.category_source,
+                size_value=float(p.size_value) if p.size_value is not None else None,
+                size_unit=p.size_unit,
+                times_bought=entry["times"],
+                total_spent=round(entry["total"], 2),
+                last_price=last[1] if last else None,
+                min_price=min(entry["prices"]) if entry["prices"] else None,
+                max_price=max(entry["prices"]) if entry["prices"] else None,
+                last_store=last[2] if last else None,
+                last_bought_at=last[0] if last else None,
+                aliases=sorted(aliases[p.id]),
+                created_at=p.created_at,
+            )
+        )
+    return result
+
+
+@router.get("/products", response_model=List[PurchaseProductRead])
+def list_products(db: DbDep, current_user: CurrentUserDep):
+    products = (
+        db.query(PurchaseProduct)
+        .filter(PurchaseProduct.user_id == str(current_user.id))
+        .order_by(PurchaseProduct.name)
+        .all()
+    )
+    return _products_read(db, str(current_user.id), products)
+
+
+@router.get("/products/unlinked-items")
+def count_unlinked_items(db: DbDep, current_user: CurrentUserDep):
+    """Items without a product yet (bought before products existed)."""
+    count = (
+        db.query(func.count(PurchaseCartItem.id))
+        .join(PurchaseCart, PurchaseCartItem.cart_id == PurchaseCart.id)
+        .filter(PurchaseCart.user_id == str(current_user.id), PurchaseCartItem.product_id.is_(None))
+        .scalar()
+    )
+    return {"count": count or 0}
+
+
+@router.post("/products/link-items", response_model=PurchaseProductLinkResult)
+def link_items_to_products(db: DbDep, current_user: CurrentUserDep):
+    """Group the items bought so far into products, by name. Safe to repeat."""
+    result = purchase_products.link_unlinked_items(db, str(current_user.id))
+    db.commit()
+    return result
+
+
+@router.put("/products/{product_id}", response_model=PurchaseProductRead)
+def update_product(
+    product_id: UUID,
+    product_update: PurchaseProductUpdate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    user_id = str(current_user.id)
+    product = _get_user_product(db, user_id, str(product_id))
+    fields = product_update.model_fields_set
+
+    if product_update.name is not None:
+        name = " ".join(product_update.name.split())
+        if not name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre no puede estar vacío")
+        duplicate = (
+            db.query(PurchaseProduct)
+            .filter(
+                PurchaseProduct.user_id == user_id,
+                func.lower(func.btrim(PurchaseProduct.name)) == name.lower(),
+                PurchaseProduct.id != product.id,
+            )
+            .first()
+        )
+        if duplicate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya tenés un producto con ese nombre. Usá \"Unir\" para juntarlos.",
+            )
+        product.name = name
+        purchase_products.add_alias(db, user_id, product, name)
+
+    if "category_id" in fields:
+        if product_update.category_id:
+            _get_user_category(db, user_id, product_update.category_id)
+        purchase_products.set_product_category(db, product, product_update.category_id, source="manual")
+
+    if "size_value" in fields or "size_unit" in fields:
+        product.size_value = product_update.size_value
+        product.size_unit = (product_update.size_unit or "").strip().lower() or None
+
+    db.commit()
+    db.refresh(product)
+    return _products_read(db, user_id, [product])[0]
+
+
+@router.post("/products/{product_id}/merge", response_model=PurchaseProductRead)
+def merge_product(
+    product_id: UUID,
+    merge_in: PurchaseProductMerge,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """Merge this product into another one (e.g. "Agua bidon" into "Agua 6L")."""
+    user_id = str(current_user.id)
+    source = _get_user_product(db, user_id, str(product_id))
+    target = _get_user_product(db, user_id, merge_in.into_product_id)
+    if source.id == target.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Elegí otro producto")
+    purchase_products.merge_products(db, user_id, source, target)
+    db.commit()
+    db.refresh(target)
+    return _products_read(db, user_id, [target])[0]
 
 
 # ============== STORES ==============
@@ -310,6 +504,7 @@ def get_active_cart(db: DbDep, current_user: CurrentUserDep):
                 price=float(item.price),
                 quantity=item.quantity,
                 category_id=item.category_id,
+                product_id=item.product_id,
                 category_name=category_name,
                 created_at=item.created_at,
             )
@@ -406,6 +601,7 @@ def get_cart(
                 price=float(item.price),
                 quantity=item.quantity,
                 category_id=item.category_id,
+                product_id=item.product_id,
                 category_name=category_name,
                 created_at=item.created_at,
             )
@@ -439,6 +635,7 @@ def _cart_item_read(item: PurchaseCartItem, db: Session) -> PurchaseCartItemRead
         price=float(item.price),
         quantity=item.quantity,
         category_id=item.category_id,
+        product_id=item.product_id,
         category_name=category_name,
         created_at=item.created_at,
     )
@@ -473,15 +670,36 @@ def add_cart_item(
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El id del item ya existe")
             return _cart_item_read(existing, db)
 
+    user_id = str(current_user.id)
+    product = None
+    if item_in.product_id:
+        # A product deleted or merged while the item waited offline: find it
+        # by name instead.
+        product = (
+            db.query(PurchaseProduct)
+            .filter(PurchaseProduct.id == item_in.product_id, PurchaseProduct.user_id == user_id)
+            .first()
+        )
+    category_id = item_in.category_id
+    if category_id and not (
+        db.query(PurchaseCategory.id)
+        .filter(PurchaseCategory.id == category_id, PurchaseCategory.user_id == user_id)
+        .first()
+    ):
+        # Deleted while the item waited offline: keep the item, without it.
+        category_id = None
+
     item = PurchaseCartItem(
         **({"id": str(item_in.id)} if item_in.id is not None else {}),
         cart_id=str(cart_id),
         product_name=item_in.product_name,
         price=item_in.price,
         quantity=item_in.quantity,
-        category_id=item_in.category_id,
+        category_id=category_id,
+        categorized_by="manual" if category_id else None,
     )
     db.add(item)
+    purchase_products.link_item(db, user_id, item, product)
 
     # Update cart total
     cart.total = float(cart.total) + (item_in.price * item_in.quantity)
@@ -525,14 +743,31 @@ def update_cart_item(
 
     old_subtotal = float(item.price) * item.quantity
 
+    user_id = str(current_user.id)
     if item_update.product_name is not None:
+        renamed = item_update.product_name != item.product_name
         item.product_name = item_update.product_name
+        if renamed:
+            purchase_products.link_item(db, user_id, item)
     if item_update.price is not None:
         item.price = item_update.price
     if item_update.quantity is not None:
         item.quantity = item_update.quantity
-    if item_update.category_id is not None:
-        item.category_id = item_update.category_id
+    if "category_id" in item_update.model_fields_set:
+        if item_update.category_id:
+            _get_user_category(db, user_id, item_update.category_id)
+            item.category_id = item_update.category_id
+            item.categorized_by = "manual"
+            if item.product_id:
+                product = db.get(PurchaseProduct, item.product_id)
+                if product and not product.category_id:
+                    purchase_products.set_product_category(db, product, item.category_id)
+        else:
+            # Back to its product's category.
+            item.categorized_by = None
+            purchase_products.apply_product_category(
+                item, db.get(PurchaseProduct, item.product_id) if item.product_id else None
+            )
 
     new_subtotal = float(item.price) * item.quantity
     cart.total = float(cart.total) - old_subtotal + new_subtotal
@@ -555,6 +790,7 @@ def update_cart_item(
         price=float(item.price),
         quantity=item.quantity,
         category_id=item.category_id,
+        product_id=item.product_id,
         category_name=category_name,
         created_at=item.created_at,
     )
@@ -889,6 +1125,7 @@ def add_list_to_cart(
             quantity=item.quantity or 1,
         )
         db.add(cart_item)
+        purchase_products.link_item(db, str(current_user.id), cart_item)
         cart.total = float(cart.total)
 
     cart.updated_at = datetime.utcnow()
@@ -952,6 +1189,7 @@ def add_list_item_to_cart(
         quantity=request.quantity,
     )
     db.add(cart_item)
+    purchase_products.link_item(db, str(current_user.id), cart_item)
 
     cart.total = float(cart.total) + (request.price * request.quantity)
     cart.updated_at = datetime.utcnow()
