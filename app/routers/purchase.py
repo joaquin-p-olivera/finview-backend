@@ -303,6 +303,25 @@ def get_cart(
     )
 
 
+def _cart_item_read(item: PurchaseCartItem, db: Session) -> PurchaseCartItemRead:
+    category_name = None
+    if item.category_id:
+        category = db.query(PurchaseCategory).filter(PurchaseCategory.id == item.category_id).first()
+        if category:
+            category_name = category.name
+
+    return PurchaseCartItemRead(
+        id=item.id,
+        cart_id=item.cart_id,
+        product_name=item.product_name,
+        price=float(item.price),
+        quantity=item.quantity,
+        category_id=item.category_id,
+        category_name=category_name,
+        created_at=item.created_at,
+    )
+
+
 @router.post("/carts/{cart_id}/items", response_model=PurchaseCartItemRead, status_code=status.HTTP_201_CREATED)
 def add_cart_item(
     cart_id: UUID,
@@ -322,7 +341,18 @@ def add_cart_item(
     if not cart:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Carrito no encontrado o inactivo")
 
+    if item_in.id is not None:
+        # A retry of an add that already went through (the client reuses the
+        # id it generated): return the stored item instead of adding it again.
+        # Unlike the Idempotency-Key cache, this survives API restarts.
+        existing = db.query(PurchaseCartItem).filter(PurchaseCartItem.id == str(item_in.id)).first()
+        if existing:
+            if existing.cart_id != str(cart_id):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El id del item ya existe")
+            return _cart_item_read(existing, db)
+
     item = PurchaseCartItem(
+        **({"id": str(item_in.id)} if item_in.id is not None else {}),
         cart_id=str(cart_id),
         product_name=item_in.product_name,
         price=item_in.price,
@@ -338,23 +368,7 @@ def add_cart_item(
     db.commit()
     db.refresh(item)
 
-    # Get category name
-    category_name = None
-    if item.category_id:
-        category = db.query(PurchaseCategory).filter(PurchaseCategory.id == item.category_id).first()
-        if category:
-            category_name = category.name
-
-    return PurchaseCartItemRead(
-        id=item.id,
-        cart_id=item.cart_id,
-        product_name=item.product_name,
-        price=float(item.price),
-        quantity=item.quantity,
-        category_id=item.category_id,
-        category_name=category_name,
-        created_at=item.created_at,
-    )
+    return _cart_item_read(item, db)
 
 
 @router.put("/carts/{cart_id}/items/{item_id}", response_model=PurchaseCartItemRead)
