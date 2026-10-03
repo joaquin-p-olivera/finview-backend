@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The app no longer fails to start with SQLAlchemy 2.1 (`No module named 'psycopg'`): bare `postgresql://` database URLs are now pinned to the installed `psycopg2` driver, since SQLAlchemy 2.1 switched the default to psycopg 3. ([#34](https://github.com/joaquin-p-olivera/finview-backend/pull/34))
+
 ### Changed
 
 - Bump `openai` requirement from `>=1.0.0` to `>=3.19.2`. ([#18](https://github.com/joaquin-p-olivera/finview-backend/pull/18))
