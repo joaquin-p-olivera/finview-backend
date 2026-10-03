@@ -21,6 +21,7 @@ class PurchaseCategoryUpdate(BaseModel):
 
 class PurchaseCategoryRead(PurchaseCategoryBase):
     id: str
+    created_by_ai: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -38,22 +39,65 @@ class PurchaseCartItemCreate(PurchaseCartItemBase):
     # made without signal and retries them later, so sending the same id twice
     # must not add the product twice (see add_cart_item).
     id: Optional[UUID] = None
+    # Product picked from the suggestions; without it the product is found
+    # (or created) from product_name.
+    product_id: Optional[str] = None
 
 
 class PurchaseCartItemUpdate(BaseModel):
     product_name: Optional[str] = None
     price: Optional[float] = None
     quantity: Optional[int] = None
+    # Sending null explicitly removes the item's own category (it goes back
+    # to its product's).
     category_id: Optional[str] = None
 
 
 class PurchaseCartItemRead(PurchaseCartItemBase):
     id: str
     cart_id: str
+    product_id: Optional[str] = None
     category_name: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseProductUpdate(BaseModel):
+    name: Optional[str] = None
+    # null removes the category.
+    category_id: Optional[str] = None
+    size_value: Optional[float] = None
+    size_unit: Optional[str] = None
+
+
+class PurchaseProductMerge(BaseModel):
+    # The product that stays; the one in the URL is merged into it.
+    into_product_id: str
+
+
+class PurchaseProductRead(BaseModel):
+    id: str
+    name: str
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    category_source: Optional[str] = None
+    size_value: Optional[float] = None
+    size_unit: Optional[str] = None
+    times_bought: int = 0
+    total_spent: float = 0
+    last_price: Optional[float] = None
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
+    last_store: Optional[str] = None
+    last_bought_at: Optional[datetime] = None
+    aliases: List[str] = []
+    created_at: datetime
+
+
+class PurchaseProductLinkResult(BaseModel):
+    linked_items: int
+    created_products: int
 
 
 class PurchaseStoreBase(BaseModel):

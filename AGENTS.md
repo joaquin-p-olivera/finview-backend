@@ -89,6 +89,8 @@ app/
 | `purchase_list_items` | Items in lists |
 | `purchase_categories` | Categories for purchases |
 | `purchase_stores` | User's list of supermarkets; `purchase_carts.store_id` points here and `store_name` keeps a copy of the name |
+| `purchase_products` | Products the user buys ("Agua 6L"), with an optional category and size; every cart item points to one via `product_id` |
+| `purchase_product_aliases` | Normalized names (`app/services/purchase_products.normalize_name`) that map to a product, so "Limones" finds "Limon" |
 
 There is no `create_all` at startup. Schema changes are SQL scripts in `sql/`, run by hand on Postgres (Render) before deploying the code that needs them.
 
@@ -136,7 +138,8 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 2. **Shopping Lists**: User can have N lists for pre-shopping planning
 3. **Categories**: Independent from expense categories, manually created
 4. **Stores**: Each cart belongs to a supermarket from the user's editable list
-5. **Flow**: Add items from list → checkbox prompts for price/quantity → adds to cart
+5. **Products**: Every cart item is linked to a product, found by its normalized name (lowercase, no accents, singular) or created. The product's category is copied to its items (`categorized_by = "product"`); a category picked for one item wins for that item (`"manual"`) and becomes the product's if it had none. Logic in `app/services/purchase_products.py`
+6. **Flow**: Add items from list → checkbox prompts for price/quantity → adds to cart
 
 ### API Endpoints
 
@@ -144,6 +147,11 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 |--------|----------|-------------|
 | GET | `/purchase/categories` | List categories |
 | POST | `/purchase/categories` | Create category |
+| GET | `/purchase/products` | List products with times bought, total spent, min/last/max price and last store |
+| PUT | `/purchase/products/{id}` | Rename, set or clear (`null`) the category (copied to its items), set the size |
+| POST | `/purchase/products/{id}/merge` | Merge into `into_product_id`: items and aliases move there |
+| GET | `/purchase/products/unlinked-items` | Count of items without a product (history from before products) |
+| POST | `/purchase/products/link-items` | Link those items to products by name; safe to repeat |
 | GET | `/purchase/stores` | List the user's supermarkets, most used first |
 | POST | `/purchase/stores` | Create a supermarket (names are unique per user, ignoring case) |
 | PUT | `/purchase/stores/{id}` | Rename a supermarket; also renames `store_name` on its carts |
