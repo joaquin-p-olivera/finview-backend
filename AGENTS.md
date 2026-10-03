@@ -109,7 +109,7 @@ module (see below for that).
 | POST | `/statements/{id}/confirm` | Save reviewed/edited transactions as confirmed |
 | DELETE | `/statements/{id}` | Delete a statement and its file |
 | GET | `/statements/{id}/pdf` | Download the original PDF |
-| POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. |
+| POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. Optional `summary` (bank's official totals: `statement_total_uyu/usd`, insurance, interest, fees...) is stored in `statements.raw_json.summary` and used by `/stats/statement-report`. |
 | GET | `/transactions/` | List transactions (filters + pagination) |
 | DELETE | `/transactions/{id}` | Delete a transaction |
 | GET | `/categories/` | List the user's categories |
@@ -117,11 +117,13 @@ module (see below for that).
 | PUT | `/categories/{id}` | Update a category |
 | DELETE | `/categories/{id}` | Delete a category |
 | POST | `/categories/seed` | Bulk-create a default set of categories |
+| — | `?currency=UYU\|USD` | Accepted by summary, by-month, by-category, by-bank, top-merchants and trends. Without it UYU and USD amounts are summed together |
 | GET | `/stats/summary` | Totals: transaction count, current/previous month spend, categories/statements count |
 | GET | `/stats/by-month?months=N` | Spend grouped by calendar month |
 | GET | `/stats/by-category?period=all\|latest` | Spend grouped by category. `latest` scopes to the date range of the most recently confirmed statement (by `period_end`) instead of all-time |
 | GET | `/stats/by-bank?period=all\|latest` | Spend grouped by bank; same `period` semantics |
 | GET | `/stats/top-merchants?limit=N&period=all\|latest` | Top merchants by spend; same `period` semantics |
+| GET | `/stats/statement-report?statement_id=` | One confirmed statement (default: latest by `period_end`) broken down by currency and category, like the monthly report email. Amounts keep their sign. `statement_total` and `other_charges` (official total minus categorized) come from `raw_json.summary` and are `null` when the statement has none |
 | GET | `/stats/trends?days=N` | Daily totals for the last N days (from today's date, not from the latest transaction — days with no transactions simply don't appear, they aren't zero-filled) |
 
 ## Purchase Module (Módulo de Compras)
