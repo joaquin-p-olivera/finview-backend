@@ -9,7 +9,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- `Keep API awake` workflow: GitHub dropped most of its scheduled runs (about one every 3-4 hours instead of every 10 minutes), so the `/health` pings now come from an external cron service (cron-job.org) with the same Friday to Sunday 09:00-21:00 Uruguay schedule. ([#PR](https://github.com/joaquin-p-olivera/finview-backend/pull/PR))
+- `Keep API awake` workflow: GitHub dropped most of its scheduled runs (about one every 3-4 hours instead of every 10 minutes), so the `/health` pings now come from an external cron service (cron-job.org) with the same Friday to Sunday 09:00-21:00 Uruguay schedule. ([#40](https://github.com/joaquin-p-olivera/finview-backend/pull/40))
 
 ## [1.3.0] - 3 Oct 2026
 
