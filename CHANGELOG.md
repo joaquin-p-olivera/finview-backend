@@ -7,6 +7,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 3 Oct 2026
+
+### Added
+
+- `POST /api/v1/purchase/carts/{cart_id}/items` accepts an optional client-generated `id` (UUID). Sending the same id again returns the item already stored instead of adding it twice (409 if that id belongs to another cart). Unlike the in-memory `Idempotency-Key` cache, this also holds across API restarts, so the frontend can queue cart changes made without signal and retry them later. ([#35](https://github.com/joaquin-p-olivera/finview-backend/pull/35))
+
+### Fixed
+
+- The app no longer fails to start with SQLAlchemy 2.1 (`No module named 'psycopg'`): bare `postgresql://` database URLs are now pinned to the installed `psycopg2` driver, since SQLAlchemy 2.1 switched the default to psycopg 3. ([#34](https://github.com/joaquin-p-olivera/finview-backend/pull/34))
+
+### Changed
+
+- Bump `SQLAlchemy` from 2.0.52 to 2.1.1. ([#21](https://github.com/joaquin-p-olivera/finview-backend/pull/21))
+- Bump `openai` requirement from `>=1.0.0` to `>=3.19.2`. ([#18](https://github.com/joaquin-p-olivera/finview-backend/pull/18))
+- Bump `bcrypt` requirement from `>=4.0.1` to `>=5.0.0`; passwords are now explicitly truncated to bcrypt's 72-byte limit, since bcrypt 5 raises on longer ones instead of truncating them, so login and sign-up with long passwords keep working. ([#14](https://github.com/joaquin-p-olivera/finview-backend/pull/14))
+
 ## [1.2.0] - 30 Sep 2026
 
 ### Added

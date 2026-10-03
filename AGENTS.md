@@ -142,7 +142,7 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 | GET | `/purchase/carts/active` | Get active cart |
 | POST | `/purchase/carts` | Create cart |
 | GET | `/purchase/carts/{id}` | Get cart details |
-| POST | `/purchase/carts/{id}/items` | Add item to cart |
+| POST | `/purchase/carts/{id}/items` | Add item to cart. Accepts an optional client-generated `id` (UUID): re-sending the same id returns the existing item instead of adding it twice, so the frontend can queue adds made without signal and retry them safely |
 | POST | `/purchase/carts/{id}/complete` | Complete cart |
 | GET | `/purchase/lists` | List shopping lists |
 | POST | `/purchase/lists` | Create shopping list |
