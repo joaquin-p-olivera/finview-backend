@@ -12,5 +12,6 @@ python-multipart==0.0.32
 email-validator==2.3.0
 google-generativeai==0.8.6
 openai>=3.19.2
+anthropic==1.11.0
 pdf2image>=1.17.0
 Pillow>=12.3.0

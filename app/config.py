@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
     GEMINI_API_KEY: str | None = None
     GROQ_API_KEY: str | None = None
+    ANTHROPIC_API_KEY: str | None = None
+    PURCHASE_AI_MODEL: str = "claude-opus-5-5"
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE_MB: int = 20
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"

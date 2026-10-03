@@ -92,7 +92,17 @@ class PurchaseProductRead(BaseModel):
     last_store: Optional[str] = None
     last_bought_at: Optional[datetime] = None
     aliases: List[str] = []
+    # Claude's suggestions, until merged or dismissed.
+    suggested_merge_into_id: Optional[str] = None
+    suggested_merge_into_name: Optional[str] = None
+    ai_note: Optional[str] = None
     created_at: datetime
+
+
+class PurchaseProductCategorizeResult(BaseModel):
+    categorized: int
+    new_categories: List[str]
+    suggestions: int
 
 
 class PurchaseProductLinkResult(BaseModel):

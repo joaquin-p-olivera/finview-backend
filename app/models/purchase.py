@@ -61,6 +61,14 @@ class PurchaseProduct(Base):
     # Optional package size, e.g. 6 + "l" or 600 + "ml".
     size_value: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
     size_unit: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Claude's suggestions, shown until the user acts on them: "this is the
+    # same product as X", or a short note about the product.
+    suggested_merge_into_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("purchase_products.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    ai_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
