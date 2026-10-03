@@ -9,7 +9,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `POST /api/v1/purchase/carts/{cart_id}/items` accepts an optional client-generated `id` (UUID). Sending the same id again returns the item already stored instead of adding it twice (409 if that id belongs to another cart). Unlike the in-memory `Idempotency-Key` cache, this also holds across API restarts, so the frontend can queue cart changes made without signal and retry them later. ([#PR](https://github.com/joaquin-p-olivera/finview-backend/pull/PR))
+- `POST /api/v1/purchase/carts/{cart_id}/items` accepts an optional client-generated `id` (UUID). Sending the same id again returns the item already stored instead of adding it twice (409 if that id belongs to another cart). Unlike the in-memory `Idempotency-Key` cache, this also holds across API restarts, so the frontend can queue cart changes made without signal and retry them later. ([#35](https://github.com/joaquin-p-olivera/finview-backend/pull/35))
 
 ### Changed
 
