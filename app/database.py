@@ -11,6 +11,15 @@ class Base(DeclarativeBase):
     pass
 
 
+def _with_driver(database_url: str) -> str:
+    # A bare postgresql:// URL (what Render hands out) picks SQLAlchemy's
+    # default driver, which is psycopg2 up to 2.0 but psycopg 3 from 2.1.
+    # Pin psycopg2, the driver in requirements.txt, so upgrades don't break.
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg2://" + database_url[len("postgresql://"):]
+    return database_url
+
+
 def _connect_args(database_url: str) -> dict:
     # Fail fast instead of hanging when the database can't be reached, and
     # send TCP keepalives so idle connections aren't silently dropped by the
@@ -31,7 +40,7 @@ def _connect_args(database_url: str) -> dict:
 # request after a quiet period doesn't fail with a dead connection.
 # pool_recycle retires connections before managed Postgres idle timeouts hit.
 engine = create_engine(
-    settings.DATABASE_URL,
+    _with_driver(settings.DATABASE_URL),
     future=True,
     pool_pre_ping=True,
     pool_recycle=280,
