@@ -13,6 +13,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Bump `SQLAlchemy` from 2.0.52 to 2.1.1. ([#21](https://github.com/joaquin-p-olivera/finview-backend/pull/21))
 - Bump `openai` requirement from `>=1.0.0` to `>=3.19.2`. ([#18](https://github.com/joaquin-p-olivera/finview-backend/pull/18))
 - Bump `bcrypt` requirement from `>=4.0.1` to `>=5.0.0`; passwords are now explicitly truncated to bcrypt's 72-byte limit, since bcrypt 5 raises on longer ones instead of truncating them, so login and sign-up with long passwords keep working. ([#14](https://github.com/joaquin-p-olivera/finview-backend/pull/14))
 
