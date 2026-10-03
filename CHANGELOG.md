@@ -9,7 +9,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Per-user list of supermarkets for carts: `GET/POST /api/v1/purchase/stores` and `PUT/DELETE /api/v1/purchase/stores/{id}`. `POST /api/v1/purchase/carts` now takes a `store_id` from that list or a `store_name`, which is matched ignoring case and added to the list when new, so every cart of the same store has the same name. Renaming a store renames its carts; deleting it keeps their name. Needs `sql/2026-10-03-purchase-stores.sql` run on the database before deploying. (PRLINK)
+- Per-user list of supermarkets for carts: `GET/POST /api/v1/purchase/stores` and `PUT/DELETE /api/v1/purchase/stores/{id}`. `POST /api/v1/purchase/carts` now takes a `store_id` from that list or a `store_name`, which is matched ignoring case and added to the list when new, so every cart of the same store has the same name. Renaming a store renames its carts; deleting it keeps their name. Needs `sql/2026-10-03-purchase-stores.sql` run on the database before deploying. ([#39](https://github.com/joaquin-p-olivera/finview-backend/pull/39))
 
 ## [1.3.0] - 3 Oct 2026
 
