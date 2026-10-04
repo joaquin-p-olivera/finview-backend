@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 4 Oct 2026
+
 ### Added
 
 - Purchase analytics: `GET /api/v1/purchase/analytics?months=12` analyzes completed carts (dated in Uruguay time): spend per category per month and per cart, category totals, top products with how often they're bought, price changes (last price vs the previous one and vs the average), a personal inflation index built only from products bought in consecutive months, and the cheapest store for products bought in more than one. `GET /api/v1/purchase/analytics/products/{id}/prices` returns every price paid for a product. ([#45](https://github.com/joaquin-p-olivera/finview-backend/pull/45))
