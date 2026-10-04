@@ -35,6 +35,8 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
 | `GEMINI_API_KEY` | Google Gemini API key | No |
 | `GROQ_API_KEY` | Groq API key | No |
+| `ANTHROPIC_API_KEY` | Claude API key, used to categorize purchase products (`app/services/purchase_ai.py`). Without it categorization is off | No |
+| `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
 | `UPLOAD_DIR` | Directory for file uploads | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
@@ -150,6 +152,8 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 | GET | `/purchase/products` | List products with times bought, total spent, min/last/max price and last store |
 | PUT | `/purchase/products/{id}` | Rename, set or clear (`null`) the category (copied to its items), set the size |
 | POST | `/purchase/products/{id}/merge` | Merge into `into_product_id`: items and aliases move there |
+| POST | `/purchase/products/categorize` | Categorize with Claude every product without a category (new categories get `created_by_ai`); also stores "same as product X" suggestions and notes. Runs automatically in the background after completing a cart. 503 without `ANTHROPIC_API_KEY` |
+| POST | `/purchase/products/{id}/dismiss-suggestion` | Clear Claude's suggestion and note on a product |
 | GET | `/purchase/products/unlinked-items` | Count of items without a product (history from before products) |
 | POST | `/purchase/products/link-items` | Link those items to products by name; safe to repeat |
 | GET | `/purchase/analytics?months=12&carts=12` | Analysis of completed carts (Uruguay time, `months=0` = all): spend per category per month and per cart, category totals and colors, top products, price changes (last vs previous price), personal inflation index (geometric mean of price ratios of products bought in consecutive months) and cheapest store per product. Logic in `app/services/purchase_analytics.py` |
