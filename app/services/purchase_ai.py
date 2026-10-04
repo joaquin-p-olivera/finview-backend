@@ -32,29 +32,33 @@ NEW_CATEGORY_COLORS = [
     "#d55181", "#008300", "#9085e9", "#e66767",
 ]
 
-SYSTEM_PROMPT = """Categorizás los productos que una persona compra en supermercados de Uruguay, \
-para que pueda ver en qué gasta y comparar precios en el tiempo. Los nombres los escribe ella \
-misma en el celular mientras compra: son cortos, en español rioplatense, a veces sin tildes, \
-con abreviaturas o marcas (por ejemplo "ph" es papel higiénico, "colet" es una marca de \
-alfajor/chocolate, "rapiditas" son tortillas para wraps).
+SYSTEM_PROMPT = """You categorize the products a person buys at supermarkets in Uruguay, so they \
+can see what they spend on and compare prices over time. They type the names themselves on \
+their phone while shopping: short, in Rioplatense Spanish, sometimes without accents, with \
+abbreviations or brand names (for example "ph" is toilet paper, "colet" is a chocolate / \
+alfajor brand, "rapiditas" are wrap tortillas).
 
-Para cada producto pendiente devolvé:
-- category: el nombre de la categoría. Usá una de sus categorías existentes cuando corresponda, \
-escrita exactamente igual. Si ninguna sirve, creá una nueva: corta, en plural, en español, del \
-estilo "Carnes", "Pescados", "Verduras", "Frutas", "Lácteos", "Huevos", "Bebidas", "Almacén", \
-"Panadería", "Snacks y dulces", "Congelados", "Limpieza", "Higiene personal". Preferí pocas \
-categorías amplias antes que muchas chicas, y reusá las nuevas que ya hayas creado en esta \
-misma respuesta.
-- size_value y size_unit: el tamaño del envase solo si el nombre lo dice ("agua 6l" -> 6 y "l", \
-"yogurt 1kg" -> 1 y "kg"). Unidades: g, kg, ml, l, u. Si no lo dice, 0 y "".
-- same_as_product_id: el id de otro producto de la lista (pendiente o ya categorizado) solo si \
-es claramente el mismo producto escrito distinto ("Limon" y "Limones", "Yogurth" y "Yogurt"). \
-No juntes productos distintos de la misma familia: "Galletas" y "Galletas integrales", "Aceite" \
-y "Aceite de oliva", "Agua" y "Agua 6l" son productos distintos. Si no, "".
-- note: una nota corta en español solo cuando algo merece revisión, por ejemplo cuando los \
-precios pagados varían mucho para algo que no se vende al peso ("Agua" a $65 y a $147: \
-quizás son dos tamaños distintos). Para carne, pescado, verdura y fruta al peso es normal que \
-el precio varíe: no lo marques. Si no hay nada que decir, "".
+Write category names and notes in Rioplatense Spanish, since the person reads them in a \
+Spanish app.
+
+For each pending product return:
+- category: the category name. Use one of their existing categories when it fits, spelled \
+exactly the same. If none fits, create a new one: short, plural, in Spanish, in the style of \
+"Carnes", "Pescados", "Verduras", "Frutas", "Lácteos", "Huevos", "Bebidas", "Almacén", \
+"Panadería", "Snacks y dulces", "Congelados", "Limpieza", "Higiene personal". Prefer a few \
+broad categories over many small ones, and reuse the new ones you already created in this \
+same answer.
+- size_value and size_unit: the package size, only if the name states it ("agua 6l" -> 6 and \
+"l", "yogurt 1kg" -> 1 and "kg"). Units: g, kg, ml, l, u. Otherwise 0 and "".
+- same_as_product_id: the id of another product in the data (pending or already categorized), \
+only if it is clearly the same product written differently ("Limon" and "Limones", "Yogurth" \
+and "Yogurt"). Don't join different products of the same family: "Galletas" and "Galletas \
+integrales", "Aceite" and "Aceite de oliva", "Agua" and "Agua 6l" are different products. \
+Otherwise "".
+- note: a short note, only when something deserves a look, for example when the prices paid \
+vary a lot for something not sold by weight ("Agua" at $65 and at $147: maybe two different \
+sizes). For meat, fish, vegetables and fruit sold by weight prices naturally vary: don't flag \
+them. If there's nothing to say, "".
 """
 
 RESULT_SCHEMA = {
@@ -111,7 +115,7 @@ def _price_summary(db: Session, product_ids: list[str]) -> dict[str, dict]:
         .group_by(PurchaseCartItem.product_id)
         .all()
     )
-    return {pid: {"veces": n, "precio_min": float(lo), "precio_max": float(hi)} for pid, n, lo, hi in rows}
+    return {pid: {"times_bought": n, "min_price": float(lo), "max_price": float(hi)} for pid, n, lo, hi in rows}
 
 
 def _build_request(
@@ -122,17 +126,17 @@ def _build_request(
 ) -> str:
     category_names = {c.id: c.name for c in categories}
     payload = {
-        "categorias_existentes": [c.name for c in categories],
-        "productos_ya_categorizados": [
-            {"id": p.id, "nombre": p.name, "categoria": category_names.get(p.category_id)}
+        "existing_categories": [c.name for c in categories],
+        "categorized_products": [
+            {"id": p.id, "name": p.name, "category": category_names.get(p.category_id)}
             for p in examples
         ],
-        "productos_pendientes": [
-            {"id": p.id, "nombre": p.name, **prices.get(p.id, {})} for p in batch
+        "pending_products": [
+            {"id": p.id, "name": p.name, **prices.get(p.id, {})} for p in batch
         ],
     }
     return (
-        "Categorizá los productos pendientes. Datos (JSON):\n\n"
+        "Categorize the pending products. Data (JSON):\n\n"
         + json.dumps(payload, ensure_ascii=False, indent=1)
     )
 
