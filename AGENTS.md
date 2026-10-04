@@ -35,6 +35,8 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
 | `GEMINI_API_KEY` | Google Gemini API key | No |
 | `GROQ_API_KEY` | Groq API key | No |
+| `ANTHROPIC_API_KEY` | Claude API key, used to categorize purchase products (`app/services/purchase_ai.py`). Without it categorization is off | No |
+| `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
 | `UPLOAD_DIR` | Directory for file uploads | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
@@ -88,6 +90,11 @@ app/
 | `purchase_lists` | Shopping lists (planning) |
 | `purchase_list_items` | Items in lists |
 | `purchase_categories` | Categories for purchases |
+| `purchase_stores` | User's list of supermarkets; `purchase_carts.store_id` points here and `store_name` keeps a copy of the name |
+| `purchase_products` | Products the user buys ("Agua 6L"), with an optional category and size; every cart item points to one via `product_id` |
+| `purchase_product_aliases` | Normalized names (`app/services/purchase_products.normalize_name`) that map to a product, so "Limones" finds "Limon" |
+
+There is no `create_all` at startup. Schema changes are SQL scripts in `sql/`, run by hand on Postgres (Render) before deploying the code that needs them.
 
 ## Core API Endpoints
 
@@ -106,7 +113,7 @@ module (see below for that).
 | POST | `/statements/{id}/confirm` | Save reviewed/edited transactions as confirmed |
 | DELETE | `/statements/{id}` | Delete a statement and its file |
 | GET | `/statements/{id}/pdf` | Download the original PDF |
-| POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. |
+| POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. Optional `summary` (bank's official totals: `statement_total_uyu/usd`, insurance, interest, fees...) is stored in `statements.raw_json.summary` and used by `/stats/statement-report`. |
 | GET | `/transactions/` | List transactions (filters + pagination) |
 | DELETE | `/transactions/{id}` | Delete a transaction |
 | GET | `/categories/` | List the user's categories |
@@ -114,11 +121,13 @@ module (see below for that).
 | PUT | `/categories/{id}` | Update a category |
 | DELETE | `/categories/{id}` | Delete a category |
 | POST | `/categories/seed` | Bulk-create a default set of categories |
+| — | `?currency=UYU\|USD` | Accepted by summary, by-month, by-category, by-bank, top-merchants and trends. Without it UYU and USD amounts are summed together |
 | GET | `/stats/summary` | Totals: transaction count, current/previous month spend, categories/statements count |
 | GET | `/stats/by-month?months=N` | Spend grouped by calendar month |
 | GET | `/stats/by-category?period=all\|latest` | Spend grouped by category. `latest` scopes to the date range of the most recently confirmed statement (by `period_end`) instead of all-time |
 | GET | `/stats/by-bank?period=all\|latest` | Spend grouped by bank; same `period` semantics |
 | GET | `/stats/top-merchants?limit=N&period=all\|latest` | Top merchants by spend; same `period` semantics |
+| GET | `/stats/statement-report?statement_id=` | One confirmed statement (default: latest by `period_end`) broken down by currency and category, like the monthly report email. Amounts keep their sign. `statement_total` and `other_charges` (official total minus categorized) come from `raw_json.summary` and are `null` when the statement has none |
 | GET | `/stats/trends?days=N` | Daily totals for the last N days (from today's date, not from the latest transaction — days with no transactions simply don't appear, they aren't zero-filled) |
 
 ## Purchase Module (Módulo de Compras)
@@ -130,7 +139,9 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 1. **Shopping Cart**: Only 1 active cart at a time per user
 2. **Shopping Lists**: User can have N lists for pre-shopping planning
 3. **Categories**: Independent from expense categories, manually created
-4. **Flow**: Add items from list → checkbox prompts for price/quantity → adds to cart
+4. **Stores**: Each cart belongs to a supermarket from the user's editable list
+5. **Products**: Every cart item is linked to a product, found by its normalized name (lowercase, no accents, singular) or created. The product's category is copied to its items (`categorized_by = "product"`); a category picked for one item wins for that item (`"manual"`) and becomes the product's if it had none. Logic in `app/services/purchase_products.py`
+6. **Flow**: Add items from list → checkbox prompts for price/quantity → adds to cart
 
 ### API Endpoints
 
@@ -138,9 +149,22 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 |--------|----------|-------------|
 | GET | `/purchase/categories` | List categories |
 | POST | `/purchase/categories` | Create category |
+| GET | `/purchase/products` | List products with times bought, total spent, min/last/max price and last store |
+| PUT | `/purchase/products/{id}` | Rename, set or clear (`null`) the category (copied to its items), set the size |
+| POST | `/purchase/products/{id}/merge` | Merge into `into_product_id`: items and aliases move there |
+| POST | `/purchase/products/categorize` | Categorize with Claude every product without a category (new categories get `created_by_ai`); also stores "same as product X" suggestions and notes. Runs automatically in the background after completing a cart. 503 without `ANTHROPIC_API_KEY` |
+| POST | `/purchase/products/{id}/dismiss-suggestion` | Clear Claude's suggestion and note on a product |
+| GET | `/purchase/products/unlinked-items` | Count of items without a product (history from before products) |
+| POST | `/purchase/products/link-items` | Link those items to products by name; safe to repeat |
+| GET | `/purchase/analytics?months=12&carts=12` | Analysis of completed carts (Uruguay time, `months=0` = all): spend per category per month and per cart, category totals and colors, top products, price changes (last vs previous price), personal inflation index (geometric mean of price ratios of products bought in consecutive months) and cheapest store per product. Logic in `app/services/purchase_analytics.py` |
+| GET | `/purchase/analytics/products/{id}/prices` | Every price paid for a product, with date and store |
+| GET | `/purchase/stores` | List the user's supermarkets, most used first |
+| POST | `/purchase/stores` | Create a supermarket (names are unique per user, ignoring case) |
+| PUT | `/purchase/stores/{id}` | Rename a supermarket; also renames `store_name` on its carts |
+| DELETE | `/purchase/stores/{id}` | Delete a supermarket; its carts keep their `store_name` and get `store_id = NULL` |
 | GET | `/purchase/carts` | List carts (with pagination) |
 | GET | `/purchase/carts/active` | Get active cart |
-| POST | `/purchase/carts` | Create cart |
+| POST | `/purchase/carts` | Create cart with `store_id` (from the list) or `store_name` (matched against the list ignoring case, and added to it if new) |
 | GET | `/purchase/carts/{id}` | Get cart details |
 | POST | `/purchase/carts/{id}/items` | Add item to cart. Accepts an optional client-generated `id` (UUID): re-sending the same id returns the existing item instead of adding it twice, so the frontend can queue adds made without signal and retry them safely |
 | POST | `/purchase/carts/{id}/complete` | Complete cart |

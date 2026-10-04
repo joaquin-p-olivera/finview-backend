@@ -431,6 +431,7 @@ def create_external_statement(
         period_end=payload.period_end,
         status="confirmed",
         confirmed_at=datetime.utcnow(),
+        raw_json={"summary": payload.summary.model_dump()} if payload.summary else None,
     )
     db.add(stmt)
     db.commit()

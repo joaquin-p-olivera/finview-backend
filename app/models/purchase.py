@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -22,6 +22,105 @@ class PurchaseCategory(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    created_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PurchaseProduct(Base):
+    """A product the user buys, e.g. "Agua 6L". Cart items point to it, so
+    the same product written in different ways ("limon", "Limones") is
+    tracked as one, and its category applies to all of its items."""
+
+    __tablename__ = "purchase_products"
+    # Created by hand like the other tables (see sql/2026-10-04-purchase-products.sql).
+    __table_args__ = (
+        Index("uq_purchase_product_name", "user_id", text("lower(btrim(name))"), unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("purchase_categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Who set the category: "manual" (the user) or "ai". The AI never
+    # overwrites a manual one.
+    category_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Optional package size, e.g. 6 + "l" or 600 + "ml".
+    size_value: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    size_unit: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Claude's suggestions, shown until the user acts on them: "this is the
+    # same product as X", or a short note about the product.
+    suggested_merge_into_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("purchase_products.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    ai_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    category: Mapped["PurchaseCategory"] = relationship("PurchaseCategory")
+
+
+class PurchaseProductAlias(Base):
+    """A normalized name ("limon") that maps to a product, so items written
+    that way are linked to it without asking."""
+
+    __tablename__ = "purchase_product_aliases"
+    __table_args__ = (UniqueConstraint("user_id", "alias_key", name="uq_purchase_product_alias"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    product_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("purchase_products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    alias_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PurchaseStore(Base):
+    __tablename__ = "purchase_stores"
+    # One name per user, ignoring case and surrounding spaces. There are no
+    # migrations: the table and index are created by hand (see AGENTS.md).
+    __table_args__ = (
+        Index("uq_purchase_store_name", "user_id", text("lower(btrim(name))"), unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -37,6 +136,14 @@ class PurchaseCart(Base):
         String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    # store_name keeps a copy of the store's name, so stats and history keep
+    # it even if the store is deleted from the list (store_id becomes NULL).
+    store_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("purchase_stores.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     store_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -77,6 +184,15 @@ class PurchaseCartItem(Base):
         ForeignKey("purchase_categories.id", ondelete="SET NULL"),
         nullable=True,
     )
+    product_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("purchase_products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # How category_id was set: "manual" (chosen for this item) or "product"
+    # (copied from its product). NULL while the item has no category.
+    categorized_by: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

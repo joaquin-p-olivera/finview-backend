@@ -43,7 +43,7 @@ All routes are under `/api/v1`.
 | `/statements` | Upload a PDF statement, poll parse status, review/confirm transactions, or `/statements/external` for trusted automated imports (skips the review step) |
 | `/transactions` | List (with filters/pagination) and delete transactions |
 | `/categories` | CRUD for expense categories |
-| `/stats` | Dashboard aggregates — summary, by-month, by-category, by-bank, top-merchants, trends. Several accept `?period=all|latest` to scope to the most recently confirmed statement's date range |
+| `/stats` | Dashboard aggregates — summary, by-month, by-category, by-bank, top-merchants, trends. Several accept `?period=all|latest` to scope to the most recently confirmed statement's date range, and all accept `?currency=UYU|USD`. `statement-report` gives one statement's breakdown by currency and category |
 | `/purchase` | Independent module: shopping carts, shopping lists, purchase categories, purchase stats |
 
 ## Deployment
