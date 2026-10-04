@@ -152,6 +152,8 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 | POST | `/purchase/products/{id}/merge` | Merge into `into_product_id`: items and aliases move there |
 | GET | `/purchase/products/unlinked-items` | Count of items without a product (history from before products) |
 | POST | `/purchase/products/link-items` | Link those items to products by name; safe to repeat |
+| GET | `/purchase/analytics?months=12&carts=12` | Analysis of completed carts (Uruguay time, `months=0` = all): spend per category per month and per cart, category totals and colors, top products, price changes (last vs previous price), personal inflation index (geometric mean of price ratios of products bought in consecutive months) and cheapest store per product. Logic in `app/services/purchase_analytics.py` |
+| GET | `/purchase/analytics/products/{id}/prices` | Every price paid for a product, with date and store |
 | GET | `/purchase/stores` | List the user's supermarkets, most used first |
 | POST | `/purchase/stores` | Create a supermarket (names are unique per user, ignoring case) |
 | PUT | `/purchase/stores/{id}` | Rename a supermarket; also renames `store_name` on its carts |
