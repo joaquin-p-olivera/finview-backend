@@ -46,7 +46,7 @@ from ..schemas.purchase import (
     PurchaseStoreRead,
     PurchaseStoreUpdate,
 )
-from ..services import purchase_ai, purchase_products
+from ..services import purchase_ai, purchase_analytics, purchase_products
 
 
 router = APIRouter(prefix="/api/v1/purchase", tags=["purchase"])
@@ -1241,6 +1241,43 @@ def add_list_item_to_cart(
 
 
 # ============== STATS ==============
+
+
+@router.get("/analytics")
+def get_purchase_analytics(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    months: int = Query(default=12, ge=0, le=120, description="Months back, 0 = all"),
+    carts: int = Query(default=12, ge=1, le=100, description="How many recent carts to break down"),
+):
+    """Spending by category (per month and per cart), top products, price
+    changes, personal inflation and cheapest store per product."""
+    user_id = str(current_user.id)
+    since = purchase_analytics.months_ago_start(months) if months else None
+    purchases = purchase_analytics.load_purchases(db, user_id, since)
+    return {
+        "category_colors": purchase_analytics.category_colors(db, user_id),
+        "category_totals": purchase_analytics.category_totals(purchases),
+        "by_month": purchase_analytics.by_category_month(purchases),
+        "by_cart": purchase_analytics.by_cart(purchases, carts),
+        "top_products": purchase_analytics.top_products(purchases),
+        "price_changes": purchase_analytics.price_changes(purchases),
+        "basket_index": purchase_analytics.basket_index(purchases),
+        "cheapest_stores": purchase_analytics.cheapest_stores(purchases),
+    }
+
+
+@router.get("/analytics/products/{product_id}/prices")
+def get_product_price_history(product_id: UUID, db: DbDep, current_user: CurrentUserDep):
+    """Every price paid for a product, oldest first, with the store."""
+    user_id = str(current_user.id)
+    product = _get_user_product(db, user_id, str(product_id))
+    purchases = purchase_analytics.load_purchases(db, user_id)
+    return {
+        "product_id": product.id,
+        "name": product.name,
+        "prices": purchase_analytics.product_price_history(purchases, product.id),
+    }
 
 
 @router.get("/stats")
