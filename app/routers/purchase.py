@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -37,6 +37,7 @@ from ..schemas.purchase import (
     PurchaseListRead,
     PurchaseListUpdate,
     PurchaseListWithItems,
+    PurchaseProductCategorizeResult,
     PurchaseProductLinkResult,
     PurchaseProductMerge,
     PurchaseProductRead,
@@ -45,7 +46,7 @@ from ..schemas.purchase import (
     PurchaseStoreRead,
     PurchaseStoreUpdate,
 )
-from ..services import purchase_products
+from ..services import purchase_ai, purchase_products
 
 
 router = APIRouter(prefix="/api/v1/purchase", tags=["purchase"])
@@ -227,6 +228,12 @@ def _products_read(db: Session, user_id: str, products: list[PurchaseProduct]) -
         c.id: c.name
         for c in db.query(PurchaseCategory).filter(PurchaseCategory.user_id == user_id).all()
     }
+    suggested_ids = {p.suggested_merge_into_id for p in products if p.suggested_merge_into_id}
+    suggested_names = (
+        dict(db.query(PurchaseProduct.id, PurchaseProduct.name).filter(PurchaseProduct.id.in_(suggested_ids)).all())
+        if suggested_ids
+        else {}
+    )
     result = []
     for p in products:
         entry = stats[p.id]
@@ -248,6 +255,9 @@ def _products_read(db: Session, user_id: str, products: list[PurchaseProduct]) -
                 last_store=last[2] if last else None,
                 last_bought_at=last[0] if last else None,
                 aliases=sorted(aliases[p.id]),
+                suggested_merge_into_id=p.suggested_merge_into_id,
+                suggested_merge_into_name=suggested_names.get(p.suggested_merge_into_id),
+                ai_note=p.ai_note,
                 created_at=p.created_at,
             )
         )
@@ -283,6 +293,33 @@ def link_items_to_products(db: DbDep, current_user: CurrentUserDep):
     result = purchase_products.link_unlinked_items(db, str(current_user.id))
     db.commit()
     return result
+
+
+@router.post("/products/categorize", response_model=PurchaseProductCategorizeResult)
+def categorize_products(db: DbDep, current_user: CurrentUserDep):
+    """Categorize with Claude every product without a category."""
+    if not purchase_ai.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="La categorización con IA no está configurada (falta ANTHROPIC_API_KEY).",
+        )
+    try:
+        return purchase_ai.categorize_pending_products(db, str(current_user.id))
+    except purchase_ai.PurchaseAIError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.post("/products/{product_id}/dismiss-suggestion", response_model=PurchaseProductRead)
+def dismiss_product_suggestion(product_id: UUID, db: DbDep, current_user: CurrentUserDep):
+    """Hide Claude's suggestion and note for this product."""
+    user_id = str(current_user.id)
+    product = _get_user_product(db, user_id, str(product_id))
+    product.suggested_merge_into_id = None
+    product.ai_note = None
+    db.commit()
+    db.refresh(product)
+    return _products_read(db, user_id, [product])[0]
 
 
 @router.put("/products/{product_id}", response_model=PurchaseProductRead)
@@ -837,6 +874,7 @@ def delete_cart_item(
 @router.post("/carts/{cart_id}/complete", response_model=PurchaseCartRead)
 def complete_cart(
     cart_id: UUID,
+    background_tasks: BackgroundTasks,
     db: DbDep,
     current_user: CurrentUserDep,
 ):
@@ -857,6 +895,9 @@ def complete_cart(
     db.add(cart)
     db.commit()
     db.refresh(cart)
+    # Products new in this cart get their category from Claude after the
+    # response is sent (skipped when the API key isn't set).
+    background_tasks.add_task(purchase_ai.categorize_in_background, str(current_user.id))
     return cart
 
 
