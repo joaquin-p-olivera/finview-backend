@@ -25,9 +25,11 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 100
 MAX_EXAMPLES = 300
 SIZE_UNITS = {"g", "kg", "ml", "l", "u"}
+# Assigned in this fixed order; checked for color-blind separation between
+# neighbors on the app's dark background, so stacked charts stay readable.
 NEW_CATEGORY_COLORS = [
-    "#22c55e", "#f43f5e", "#0ea5e9", "#eab308", "#8b5cf6",
-    "#f97316", "#14b8a6", "#ec4899", "#3b82f6", "#6366f1",
+    "#3987e5", "#d95926", "#199e70", "#c98500",
+    "#d55181", "#008300", "#9085e9", "#e66767",
 ]
 
 SYSTEM_PROMPT = """Categorizás los productos que una persona compra en supermercados de Uruguay, \
