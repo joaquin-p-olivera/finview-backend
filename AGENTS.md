@@ -33,11 +33,9 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `DATABASE_URL` | MySQL connection string | Yes |
 | `SECRET_KEY` | JWT secret key | Yes |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
-| `GEMINI_API_KEY` | Google Gemini API key | No |
-| `GROQ_API_KEY` | Groq API key | No |
-| `ANTHROPIC_API_KEY` | Claude API key, used to categorize purchase products (`app/services/purchase_ai.py`). Without it categorization is off | No |
+| `ANTHROPIC_API_KEY` | Claude API key, used to parse statement PDFs (`app/services/statement_parser.py`) and categorize purchase products (`app/services/purchase_ai.py`). Without it both are off | No |
 | `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
-| `UPLOAD_DIR` | Directory for file uploads | No |
+| `STATEMENT_PARSER_MODEL` | Claude model that parses statement PDFs (default `claude-sonnet-5`, same as the Apps Script) | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
 | `EXTERNAL_IMPORT_ALLOWED_EMAIL` | Only this account can use `POST /api/v1/statements/external` | No |
