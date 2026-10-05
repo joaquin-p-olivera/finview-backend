@@ -7,6 +7,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Uploaded statements are parsed with Claude the same way as the monthly Itaú Apps Script: the PDF is sent as-is (no more page images for Groq, which mixed up the UYU and USD columns) and is never stored, only kept in memory while parsed. The review data comes with each transaction's category already resolved to the user's categories (`category_id`, `category_source: "ai"`), and the statement keeps the bank's official totals (`summary`) for the report. `POST /api/v1/statements/` accepts an optional `password` for protected PDFs, rejects a statement already confirmed for the same bank and period, lets a failed upload be retried, and a statement stuck in `processing` for more than 10 minutes becomes an error. Model configurable with `STATEMENT_PARSER_MODEL` (default `claude-sonnet-5`); needs `ANTHROPIC_API_KEY`. ([#49](https://github.com/joaquin-p-olivera/finview-backend/pull/49))
+
+### Removed
+
+- Groq and Gemini statement parsers, `GET /api/v1/statements/{id}/pdf`, the `UPLOAD_DIR`, `GROQ_API_KEY` and `GEMINI_API_KEY` settings, and the `google-generativeai`, `openai`, `pdf2image` and `Pillow` dependencies. ([#49](https://github.com/joaquin-p-olivera/finview-backend/pull/49))
+
 ## [1.4.0] - 4 Oct 2026
 
 ### Added
