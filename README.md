@@ -9,8 +9,8 @@ tracks supermarket shopping (carts and lists).
 - **FastAPI** + **Uvicorn**
 - **SQLAlchemy** (MySQL) + **Alembic** for migrations
 - **JWT** auth (`python-jose`)
-- AI parsing via **Gemini** (`google-generativeai`) or **Groq** (OpenAI-compatible
-  client), converting statement pages to images with `pdf2image` + Pillow
+- AI parsing with **Claude** (`anthropic`): the statement PDF is sent as-is and
+  never stored; password-protected PDFs are opened with `pypdf`
 
 ## Quick start
 
