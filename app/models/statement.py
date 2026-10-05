@@ -29,6 +29,8 @@ class Statement(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="UYU")
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # how it got here: "upload" (web), "email" (forwarded to the import inbox) or None (older / external)
+    source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

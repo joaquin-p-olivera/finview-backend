@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     STATEMENT_PARSER_MODEL: str = "claude-sonnet-5"
     MAX_FILE_SIZE_MB: int = 20
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    # Import inbox: a Gmail account users forward their bank emails to, read over IMAP
+    EMAIL_IMPORT_ADDRESS: str | None = None
+    EMAIL_IMPORT_APP_PASSWORD: str | None = None
+    EMAIL_IMPORT_IMAP_HOST: str = "imap.gmail.com"
+    EMAIL_IMPORT_CRON_SECRET: str | None = None
     EXTERNAL_IMPORT_SECRET: str | None = None
     EXTERNAL_IMPORT_ALLOWED_EMAIL: str | None = None
 
