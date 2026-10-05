@@ -118,6 +118,9 @@ def _build_prompt(category_names: list[str]) -> str:
         "the text after the colon is guidance to help you decide, not something to output):\n"
         f"{categories}\n"
         f'If none fits well, use "{FALLBACK_CATEGORY}". Do not invent new category names.\n\n'
+        "period_start and period_end are the billing period printed on the statement (from the previous "
+        "closing date to this closing date), never derived from transaction dates: installment purchases "
+        "keep their original purchase date, which can be months before the period.\n"
         "Also extract the statement summary values when present (null when not printed).\n"
         "Dates go in YYYY-MM-DD format."
     )
