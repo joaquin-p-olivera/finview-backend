@@ -12,7 +12,7 @@ from ..dependencies import get_current_user
 from ..models.email_import import EmailImport
 from ..models.statement import Statement
 from ..models.user import User
-from ..schemas.email_import import EmailImportItem, EmailImportOverview, GmailConfirmation
+from ..schemas.email_import import EmailImportItem, EmailImportOverview, GmailConfirmation, NotificationsUpdate
 from ..services import email_import
 from .statements import processing_timed_out
 
@@ -89,6 +89,7 @@ def _overview(db: Session, user: User) -> EmailImportOverview:
     )
     return EmailImportOverview(
         enabled=True,
+        notifications=user.email_notifications,
         address=email_import.import_address(token),
         gmail_confirmation=GmailConfirmation(
             code=(confirmation.details or {}).get("code"),
@@ -117,6 +118,14 @@ def regenerate_address(db: DbDep, current_user: CurrentUserDep):
             detail="La importación por mail no está configurada en el servidor.",
         )
     _new_token(db, current_user)
+    return _overview(db, current_user)
+
+
+@router.put("/notifications", response_model=EmailImportOverview)
+def set_notifications(body: NotificationsUpdate, db: DbDep, current_user: CurrentUserDep):
+    """Turns on or off the email sent when a statement arrives (or fails to import)."""
+    current_user.email_notifications = body.enabled
+    db.commit()
     return _overview(db, current_user)
 
 
