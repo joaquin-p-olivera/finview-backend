@@ -9,7 +9,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Email notice when a statement arrives by email: after the import inbox handles a PDF, the user gets an email with the bank, period, totals per currency and a link to review it, or the reason it failed (for example a password-protected PDF). It is sent through Gmail SMTP from the import inbox itself, reusing `EMAIL_IMPORT_ADDRESS` and `EMAIL_IMPORT_APP_PASSWORD` (no new variables; the link uses the first non-localhost `CORS_ORIGINS` entry), to the user's own email. Each user can turn it off with `PUT /api/v1/email-import/notifications` (`users.email_notifications`, on by default; `GET /api/v1/email-import` returns it as `notifications`). Needs `sql/2026-10-10-email-notifications.sql` run on the database before deploying. ([#PR](https://github.com/joaquin-p-olivera/finview-backend/pull/PR))
+- Email notice when a statement arrives by email: after the import inbox handles a PDF, the user gets an email with the bank, period, totals per currency and a link to review it, or the reason it failed (for example a password-protected PDF). It is sent through Gmail SMTP from the import inbox itself, reusing `EMAIL_IMPORT_ADDRESS` and `EMAIL_IMPORT_APP_PASSWORD` (no new variables; the link uses the first non-localhost `CORS_ORIGINS` entry), to the user's own email. Each user can turn it off with `PUT /api/v1/email-import/notifications` (`users.email_notifications`, on by default; `GET /api/v1/email-import` returns it as `notifications`). Needs `sql/2026-10-10-email-notifications.sql` run on the database before deploying. ([#59](https://github.com/joaquin-p-olivera/finview-backend/pull/59))
 
 ## [1.5.0] - 10 Oct 2026
 
