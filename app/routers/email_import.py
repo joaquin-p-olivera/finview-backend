@@ -14,7 +14,7 @@ from ..models.statement import Statement
 from ..models.user import User
 from ..schemas.email_import import EmailImportItem, EmailImportOverview, GmailConfirmation
 from ..services import email_import
-from .statements import PROCESSING_TIMEOUT
+from .statements import processing_timed_out
 
 
 router = APIRouter(prefix="/api/v1/email-import", tags=["email-import"])
@@ -50,7 +50,7 @@ def _item(row: EmailImport, stmt: Statement | None) -> EmailImportItem:
         item.period_start = stmt.period_start
         item.period_end = stmt.period_end
         if row.status == "processing":
-            if stmt.status == "processing" and datetime.now(timezone.utc) - stmt.uploaded_at > PROCESSING_TIMEOUT:
+            if processing_timed_out(stmt):
                 item.status = "error"
                 item.error_message = "El procesamiento se interrumpió. Reenviá el mail o subí el PDF desde la web."
             elif stmt.status != "processing":
