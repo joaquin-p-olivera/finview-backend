@@ -9,8 +9,8 @@ tracks supermarket shopping (carts and lists).
 - **FastAPI** + **Uvicorn**
 - **SQLAlchemy** (MySQL) + **Alembic** for migrations
 - **JWT** auth (`python-jose`)
-- AI parsing via **Gemini** (`google-generativeai`) or **Groq** (OpenAI-compatible
-  client), converting statement pages to images with `pdf2image` + Pillow
+- AI parsing with **Claude** (`anthropic`): the statement PDF is sent as-is and
+  never stored; password-protected PDFs are opened with `pypdf`
 
 ## Quick start
 
@@ -41,6 +41,7 @@ All routes are under `/api/v1`.
 |---|---|
 | `/auth` | Register, login (OAuth2 password flow, returns a JWT) |
 | `/statements` | Upload a PDF statement, poll parse status, review/confirm transactions, or `/statements/external` for trusted automated imports (skips the review step) |
+| `/email-import` | Import statements by forwarding the bank email to the user's Finview address; a cron reads the Gmail import inbox |
 | `/transactions` | List (with filters/pagination) and delete transactions |
 | `/categories` | CRUD for expense categories |
 | `/stats` | Dashboard aggregates — summary, by-month, by-category, by-bank, top-merchants, trends. Several accept `?period=all|latest` to scope to the most recently confirmed statement's date range, and all accept `?currency=UYU|USD`. `statement-report` gives one statement's breakdown by currency and category |

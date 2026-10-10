@@ -1,16 +1,13 @@
 import hashlib
-import os
 import uuid
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..database import SessionLocal, get_db
+from ..database import get_db
 from ..dependencies import get_current_user
 from ..models.category import Category
 from ..models.statement import Statement
@@ -24,7 +21,7 @@ from ..schemas.statement import (
     StatementStatus,
     TransactionForReview,
 )
-from ..services.groq_parser import GroqParseError, parse_statement_pdf
+from ..services import statement_import, statement_parser
 
 
 router = APIRouter(prefix="/api/v1/statements", tags=["statements"])
@@ -34,17 +31,24 @@ CurrentUserDep = Annotated[User, Depends(get_current_user)]
 settings = get_settings()
 
 
-def _ensure_upload_dir(user_id: str) -> Path:
-    base = Path(settings.UPLOAD_DIR)
-    user_dir = base / user_id
-    user_dir.mkdir(parents=True, exist_ok=True)
-    return user_dir
+PROCESSING_TIMEOUT = timedelta(minutes=10)
 
 
-async def _save_pdf_file(file: UploadFile, user_id: str) -> tuple[str, str, str]:
-    """
-    Guarda el PDF en disco, valida tamaño y magic bytes, y devuelve (filename, file_path, file_hash).
-    """
+def processing_timed_out(stmt: Statement) -> bool:
+    """True when the statement has been processing longer than PROCESSING_TIMEOUT.
+    statements.uploaded_at is a timestamp without time zone in production (UTC),
+    so a naive value is read as UTC."""
+    if stmt.status != "processing" or stmt.uploaded_at is None:
+        return False
+    uploaded_at = stmt.uploaded_at
+    if uploaded_at.tzinfo is None:
+        uploaded_at = uploaded_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - uploaded_at > PROCESSING_TIMEOUT
+
+
+async def _read_pdf(file: UploadFile) -> bytes:
+    """Reads the uploaded PDF into memory, checking type, size and magic bytes.
+    The file is never written to disk."""
     if file.content_type != "application/pdf":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -52,99 +56,18 @@ async def _save_pdf_file(file: UploadFile, user_id: str) -> tuple[str, str, str]
         )
 
     max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
-    hasher = hashlib.sha256()
-
-    user_dir = _ensure_upload_dir(user_id)
-    tmp_path = user_dir / f"tmp-{uuid.uuid4()}.pdf"
-
-    total = 0
-    first_chunk = True
-
-    try:
-        with tmp_path.open("wb") as out:
-            while True:
-                chunk = await file.read(8192)
-                if not chunk:
-                    break
-                if first_chunk:
-                    # validar magic bytes %PDF
-                    if not chunk.startswith(b"%PDF"):
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="El archivo no parece ser un PDF válido.",
-                        )
-                    first_chunk = False
-                total += len(chunk)
-                if total > max_bytes:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"El archivo excede el tamaño máximo de {settings.MAX_FILE_SIZE_MB} MB.",
-                    )
-                hasher.update(chunk)
-                out.write(chunk)
-    except HTTPException:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
-
-    file_hash = hasher.hexdigest()
-    final_name = f"{uuid.uuid4()}.pdf"
-    final_path = user_dir / final_name
-    os.replace(tmp_path, final_path)
-
-    return file.filename or final_name, str(final_path), file_hash
-
-
-def _run_gemini_background(statement_id: str, user_id: str) -> None:
-    """
-    Tarea de background que llama a Gemini y actualiza el statement.
-    """
-    db = SessionLocal()
-    try:
-        stmt: Statement | None = (
-            db.query(Statement).filter(Statement.id == statement_id, Statement.user_id == user_id).first()
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El archivo excede el tamaño máximo de {settings.MAX_FILE_SIZE_MB} MB.",
         )
-        if not stmt or not stmt.file_path:
-            return
-
-        # categorías del usuario
-        user = db.query(User).filter(User.id == user_id).first()
-        user_categories = [c.name for c in user.categories] if user else []
-
-        try:
-            parsed = parse_statement_pdf(stmt.file_path, user_categories)
-        except GroqParseError as exc:
-            stmt.status = "error"
-            stmt.error_message = str(exc)
-            db.add(stmt)
-            db.commit()
-            return
-
-        # volcar metadata básica desde el JSON
-        stmt.bank_name = parsed.get("bank_name")
-        stmt.card_last4 = parsed.get("card_last4")
-        stmt.currency = parsed.get("currency") or stmt.currency
-
-        from datetime import date
-
-        def _parse_date(value: str | None):
-            if not value:
-                return None
-            try:
-                return date.fromisoformat(value)
-            except Exception:  # noqa: BLE001
-                return None
-
-        stmt.period_start = _parse_date(parsed.get("period_start"))
-        stmt.period_end = _parse_date(parsed.get("period_end"))
-        stmt.raw_json = parsed
-        stmt.status = "pending_review"
-        stmt.error_message = None
-
-        db.add(stmt)
-        db.commit()
-    finally:
-        db.close()
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo no parece ser un PDF válido.",
+        )
+    return data
 
 
 @router.post("/", response_model=StatementListItem, status_code=status.HTTP_201_CREATED)
@@ -153,44 +76,52 @@ async def upload_statement(
     db: DbDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
+    password: str | None = Form(None),
 ):
-    try:
-        filename, file_path, file_hash = await _save_pdf_file(file, str(current_user.id))
-
-        # detección de duplicados
-        existing = (
-            db.query(Statement)
-            .filter(Statement.user_id == str(current_user.id), Statement.file_hash == file_hash)
-            .first()
+    """Uploads a statement PDF; Claude parses it in the background and the
+    statement goes to pending_review. Only the parse result is kept, not the PDF."""
+    if not statement_parser.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Falta configurar ANTHROPIC_API_KEY en el servidor.",
         )
-        if existing:
-            # borrar el archivo recién subido
-            try:
-                Path(file_path).unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001
-                pass
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ya subiste este archivo anteriormente.",
-            )
 
-        stmt = Statement(
-            user_id=str(current_user.id),
-            filename=filename,
-            file_path=file_path,
-            file_hash=file_hash,
-            status="processing",
-        )
-        db.add(stmt)
+    data = await _read_pdf(file)
+    file_hash = hashlib.sha256(data).hexdigest()
+    user_id = str(current_user.id)
+
+    existing = (
+        db.query(Statement)
+        .filter(Statement.user_id == user_id, Statement.file_hash == file_hash)
+        .first()
+    )
+    if existing and existing.status == "error":
+        # a failed attempt doesn't block uploading the same file again
+        db.delete(existing)
         db.commit()
-        db.refresh(stmt)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise
+    elif existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya subiste este archivo anteriormente.",
+        )
 
-    background_tasks.add_task(_run_gemini_background, stmt.id, str(current_user.id))
+    try:
+        pdf_bytes = statement_parser.decrypt_pdf(data, password)
+    except statement_parser.StatementParseError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    stmt = Statement(
+        user_id=user_id,
+        filename=file.filename,
+        file_hash=file_hash,
+        status="processing",
+        source="upload",
+    )
+    db.add(stmt)
+    db.commit()
+    db.refresh(stmt)
+
+    background_tasks.add_task(statement_import.parse_into_statement, stmt.id, user_id, pdf_bytes)
     return stmt
 
 
@@ -213,6 +144,11 @@ def get_statement_status(statement_id: str, db: DbDep, current_user: CurrentUser
     )
     if not stmt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estado de cuenta no encontrado")
+    if processing_timed_out(stmt):
+        # the server restarted mid-parse (the PDF only lived in memory)
+        stmt.status = "error"
+        stmt.error_message = "El procesamiento se interrumpió. Volvé a subir el PDF."
+        db.commit()
     return StatementStatus(id=stmt.id, status=stmt.status, error_message=stmt.error_message)
 
 
@@ -233,9 +169,13 @@ def get_statement_detail(statement_id: str, db: DbDep, current_user: CurrentUser
 
     raw = stmt.raw_json or {}
     txs = raw.get("transactions") or []
+    user_category_ids = {
+        c.id for c in db.query(Category.id).filter(Category.user_id == str(current_user.id)).all()
+    }
 
     items: list[TransactionForReview] = []
     for tx in txs:
+        category_id = tx.get("category_id")
         try:
             tx_id = str(uuid.uuid4())
             items.append(
@@ -248,7 +188,10 @@ def get_statement_detail(statement_id: str, db: DbDep, current_user: CurrentUser
                     currency=tx.get("currency") or stmt.currency,
                     installment_num=tx.get("installment_num"),
                     installment_tot=tx.get("installment_tot"),
-                    suggested_category=tx.get("suggested_category"),
+                    suggested_category=tx.get("category") or tx.get("suggested_category"),
+                    # preselected; None if the category was deleted meanwhile
+                    category_id=category_id if category_id in user_category_ids else None,
+                    category_source="ai",
                 )
             )
         except Exception:  # noqa: BLE001
@@ -323,56 +266,9 @@ def delete_statement(statement_id: str, db: DbDep, current_user: CurrentUserDep)
     if not stmt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estado de cuenta no encontrado")
 
-    # borrar archivo físico
-    if stmt.file_path:
-        try:
-            Path(stmt.file_path).unlink(missing_ok=True)
-        except Exception:  # noqa: BLE001
-            pass
-
     db.delete(stmt)
     db.commit()
     return None
-
-
-@router.get("/{statement_id}/pdf")
-def get_statement_pdf(statement_id: str, db: DbDep, current_user: CurrentUserDep):
-    stmt = (
-        db.query(Statement)
-        .filter(Statement.id == statement_id, Statement.user_id == str(current_user.id))
-        .first()
-    )
-    if not stmt or not stmt.file_path:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF no encontrado")
-
-    path = Path(stmt.file_path)
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF no encontrado")
-
-    return FileResponse(path, media_type="application/pdf", filename=stmt.filename or path.name)
-
-
-def _get_or_create_category(db: Session, user_id: str, name: str | None) -> str | None:
-    """
-    Looks up a user's category by name (case-insensitive); creates it if missing.
-    Returns the category_id, or None if no name was provided.
-    """
-    if not name:
-        return None
-
-    category = (
-        db.query(Category)
-        .filter(Category.user_id == user_id, Category.name.ilike(name))
-        .first()
-    )
-    if category:
-        return category.id
-
-    category = Category(user_id=user_id, name=name)
-    db.add(category)
-    db.commit()
-    db.refresh(category)
-    return category.id
 
 
 @router.post("/external", response_model=StatementListItem, status_code=status.HTTP_201_CREATED)
@@ -438,7 +334,7 @@ def create_external_statement(
     db.refresh(stmt)
 
     for tx in payload.transactions:
-        category_id = _get_or_create_category(db, str(current_user.id), tx.category_name)
+        category_id = statement_import.get_or_create_category(db, str(current_user.id), tx.category_name)
         transaction = Transaction(
             statement_id=stmt.id,
             user_id=str(current_user.id),

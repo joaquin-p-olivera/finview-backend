@@ -5,7 +5,7 @@ from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
 
 from .config import get_settings
 from .idempotency import IdempotencyMiddleware
-from .routers import auth, categories, statements, stats, transactions, purchase
+from .routers import auth, categories, email_import, statements, stats, transactions, purchase
 
 settings = get_settings()
 
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Finview - Analizador de gastos", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="Finview - Analizador de gastos", version="1.5.0", lifespan=lifespan)
 
 # Added before CORS so it runs inside it: replayed responses still get CORS headers.
 app.add_middleware(IdempotencyMiddleware)
@@ -43,6 +43,7 @@ def health_check():
 app.include_router(auth.router)
 app.include_router(categories.router)
 app.include_router(statements.router)
+app.include_router(email_import.router)
 app.include_router(stats.router)
 app.include_router(transactions.router)
 app.include_router(purchase.router)
