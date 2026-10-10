@@ -5,7 +5,7 @@ from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
 
 from .config import get_settings
 from .idempotency import IdempotencyMiddleware
-from .routers import auth, categories, statements, stats, transactions, purchase
+from .routers import auth, categories, email_import, statements, stats, transactions, purchase
 
 settings = get_settings()
 
@@ -43,6 +43,7 @@ def health_check():
 app.include_router(auth.router)
 app.include_router(categories.router)
 app.include_router(statements.router)
+app.include_router(email_import.router)
 app.include_router(stats.router)
 app.include_router(transactions.router)
 app.include_router(purchase.router)

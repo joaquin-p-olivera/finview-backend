@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Import statements by email: each user gets a forwarding address (`GET /api/v1/email-import`, e.g. `finview.import+TOKEN@gmail.com`, renewable with `POST /api/v1/email-import/token`) to forward their bank emails to, by hand or with a Gmail filter. `POST /api/v1/email-import/run`, called by an external cron with `X-Cron-Secret`, reads that Gmail inbox over IMAP, parses each PDF attachment like a web upload (it waits in pending review, marked `source: "email"`), keeps Gmail's forwarding confirmation code so the user can see it in the app, and deletes those emails; the PDF is never stored. Emails not sent to a `+TOKEN` address are left untouched and unread, so an existing Gmail account can be used. Password-protected PDFs and emails without a PDF show up as errors. Needs `EMAIL_IMPORT_ADDRESS`, `EMAIL_IMPORT_APP_PASSWORD`, `EMAIL_IMPORT_CRON_SECRET` and `sql/2026-10-05-email-import.sql` run on the database before deploying. ([#51](https://github.com/joaquin-p-olivera/finview-backend/pull/51))
+
 ### Changed
 
 - Uploaded statements are parsed with Claude the same way as the monthly Itaú Apps Script: the PDF is sent as-is (no more page images for Groq, which mixed up the UYU and USD columns) and is never stored, only kept in memory while parsed. The review data comes with each transaction's category already resolved to the user's categories (`category_id`, `category_source: "ai"`), and the statement keeps the bank's official totals (`summary`) for the report. `POST /api/v1/statements/` accepts an optional `password` for protected PDFs, rejects a statement already confirmed for the same bank and period, lets a failed upload be retried, and a statement stuck in `processing` for more than 10 minutes becomes an error. The prompt asks for the billing period printed on the statement, so installment purchases (dated months earlier) no longer move `period_start`. Model configurable with `STATEMENT_PARSER_MODEL` (default `claude-sonnet-5`); needs `ANTHROPIC_API_KEY`. ([#49](https://github.com/joaquin-p-olivera/finview-backend/pull/49))
