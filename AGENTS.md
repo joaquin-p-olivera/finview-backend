@@ -31,13 +31,12 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DATABASE_URL` | MySQL connection string | Yes |
-| `SECRET_KEY` | JWT secret key | Yes |
+| `SECRET_KEY` | JWT secret key. It also derives (HKDF) the key that encrypts the saved bank PDF passwords (`app/services/secret_box.py`), so rotating it logs everyone out and makes those passwords unreadable: users enter them again | Yes |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
 | `ANTHROPIC_API_KEY` | Claude API key, used to parse statement PDFs (`app/services/statement_parser.py`) and categorize purchase products (`app/services/purchase_ai.py`). Without it both are off | No |
 | `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
 | `STATEMENT_PARSER_MODEL` | Claude model that parses statement PDFs (default `claude-sonnet-5`, same as the Apps Script) | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
-| `SECRET_BOX_KEY` | Fernet key that encrypts the saved bank PDF passwords (`app/services/secret_box.py`). If unset it is derived from `SECRET_KEY`; changing either makes saved passwords unreadable | No |
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
 | `EXTERNAL_IMPORT_ALLOWED_EMAIL` | Only this account can use `POST /api/v1/statements/external` | No |
 | `EMAIL_IMPORT_ADDRESS` | Gmail inbox users forward their bank emails to (`app/services/email_import.py`). Each user gets `local+TOKEN@domain`. Without it (or the app password) import by email is off | No |
