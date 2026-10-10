@@ -8,6 +8,8 @@ statement waits for review; Gmail's forwarding confirmation is kept so the user
 can see the code in the app. Every email sent to a `+TOKEN` address is deleted
 once handled (the PDF is never stored); any other email in the inbox is left
 untouched and unread, so the inbox can also be a personal account.
+
+Once a PDF is handled the user gets an email about it (`email_notice`).
 """
 
 import email
@@ -28,7 +30,7 @@ from ..database import SessionLocal
 from ..models.email_import import EmailImport
 from ..models.statement import Statement
 from ..models.user import User
-from . import statement_import, statement_parser
+from . import email_notice, statement_import, statement_parser
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -118,7 +120,7 @@ def _already_handled(db: Session, user_id: str, message_id: str, filename: str) 
     )
 
 
-def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes) -> None:
+def _import_attachment(db: Session, user: User, base: dict, filename: str, data: bytes) -> None:
     user_id = str(user.id)
     if _already_handled(db, user_id, base["message_id"], filename):
         return
@@ -174,6 +176,33 @@ def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes)
     row.status = "error" if stmt.status == "error" else "done"
     row.error_message = stmt.error_message if stmt.status == "error" else None
     db.commit()
+
+
+def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes) -> None:
+    """Imports one PDF attachment and tells the user how it went. Nothing is sent
+    for a PDF already handled or a duplicate."""
+    user_id = str(user.id)
+    if _already_handled(db, user_id, base["message_id"], filename):
+        return
+    _import_attachment(db, user, base, filename, data)
+
+    row = (
+        db.query(EmailImport)
+        .filter(
+            EmailImport.user_id == user_id,
+            EmailImport.message_id == base["message_id"],
+            EmailImport.filename == filename[:255],
+        )
+        .first()
+    )
+    if not row:
+        return
+    if row.status == "error":
+        email_notice.notify_import_failed(user, filename, row.error_message or "Hubo un error al procesar el PDF.")
+    elif row.status == "done":
+        stmt = db.get(Statement, row.statement_id) if row.statement_id else None
+        if stmt:
+            email_notice.notify_statement_imported(user, stmt)
 
 
 def process_message(db: Session, raw: bytes) -> None:

@@ -25,8 +25,13 @@ class EmailImportItem(BaseModel):
   period_end: Optional[date] = None
 
 
+class NotificationsUpdate(BaseModel):
+  enabled: bool
+
+
 class EmailImportOverview(BaseModel):
   enabled: bool
+  notifications: bool = True
   address: Optional[str] = None
   gmail_confirmation: Optional[GmailConfirmation] = None
   imports: List[EmailImportItem]
