@@ -37,6 +37,7 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
 | `STATEMENT_PARSER_MODEL` | Claude model that parses statement PDFs (default `claude-sonnet-5`, same as the Apps Script) | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
+| `SECRET_BOX_KEY` | Fernet key that encrypts the saved bank PDF passwords (`app/services/secret_box.py`). If unset it is derived from `SECRET_KEY`; changing either makes saved passwords unreadable | No |
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
 | `EXTERNAL_IMPORT_ALLOWED_EMAIL` | Only this account can use `POST /api/v1/statements/external` | No |
 | `EMAIL_IMPORT_ADDRESS` | Gmail inbox users forward their bank emails to (`app/services/email_import.py`). Each user gets `local+TOKEN@domain`. Without it (or the app password) import by email is off | No |
@@ -95,6 +96,7 @@ app/
 | `purchase_stores` | User's list of supermarkets; `purchase_carts.store_id` points here and `store_name` keeps a copy of the name |
 | `purchase_products` | Products the user buys ("Agua 6L"), with an optional category and size; every cart item points to one via `product_id` |
 | `email_imports` | What the import inbox received for a user: one row per PDF attachment (`kind=statement`, with `statement_id`) or Gmail's forwarding confirmation (`kind=gmail_confirmation`, code and link in `details`). The email itself is deleted. `users.import_token` is the user's forwarding address token and `statements.source` is `upload`, `email` or null (older rows) |
+| `bank_pdf_passwords` | Per user and bank (unique on `user_id` + lowercase `bank_key`), the password of that bank's protected statement PDFs, Fernet-encrypted in `password_encrypted`. The email import tries them on protected PDFs, banks named in the sender, subject or filename first |
 | `purchase_product_aliases` | Normalized names (`app/services/purchase_products.normalize_name`) that map to a product, so "Limones" finds "Limon" |
 
 There is no `create_all` at startup. Schema changes are SQL scripts in `sql/`, run by hand on Postgres (Render) before deploying the code that needs them.
@@ -117,7 +119,10 @@ module (see below for that).
 | DELETE | `/statements/{id}` | Delete a statement |
 | GET | `/email-import` | Import by email: `enabled`, the user's forwarding `address` (created on first call), Gmail's latest forwarding confirmation (`code`, `link`, last 7 days) and the last 20 imported attachments with their statement status |
 | POST | `/email-import/token` | New forwarding address; the old one stops working |
-| POST | `/email-import/run` | Reads the import inbox (header `X-Cron-Secret` = `EMAIL_IMPORT_CRON_SECRET`; called hourly by cron-job.org). Returns 202 and works in the background: each PDF is parsed like an upload and waits in `pending_review`; password-protected PDFs are rejected (upload them from the web); only emails sent to a `+TOKEN` address from the last 14 days are read, and only those are moved to the trash: any other email stays untouched and unread, so the inbox can be an existing personal account |
+| GET | `/email-import/passwords` | Banks with a saved PDF password (`id`, `bank_name`, `updated_at`; the password is never returned) |
+| PUT | `/email-import/passwords` | Save `{bank_name, password}` (encrypted); replaces the one for that bank, ignoring case |
+| DELETE | `/email-import/passwords/{id}` | Remove a saved password |
+| POST | `/email-import/run` | Reads the import inbox (header `X-Cron-Secret` = `EMAIL_IMPORT_CRON_SECRET`; called hourly by cron-job.org). Returns 202 and works in the background: each PDF is parsed like an upload and waits in `pending_review`; password-protected PDFs are opened with the user's saved bank passwords (below) and rejected if none works; only emails sent to a `+TOKEN` address from the last 14 days are read, and only those are moved to the trash: any other email stays untouched and unread, so the inbox can be an existing personal account |
 | POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. Optional `summary` (bank's official totals: `statement_total_uyu/usd`, insurance, interest, fees...) is stored in `statements.raw_json.summary` and used by `/stats/statement-report`. |
 | GET | `/transactions/` | List transactions (filters + pagination) |
 | DELETE | `/transactions/{id}` | Delete a transaction |

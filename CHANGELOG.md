@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Saved PDF passwords per bank for the email import, so protected statements (Santander uses the holder's ID number) can be imported without uploading them by hand: `GET/PUT /api/v1/email-import/passwords` and `DELETE /api/v1/email-import/passwords/{id}`. Passwords are stored encrypted with Fernet (key `SECRET_BOX_KEY`, derived from `SECRET_KEY` if unset) and never returned by the API. On a protected PDF the import tries the saved passwords, those of banks named in the sender, subject or filename first. Needs `sql/2026-10-10-bank-pdf-passwords.sql` run on the database before deploying. ([#58](https://github.com/joaquin-p-olivera/finview-backend/pull/58))
+
 ## [1.5.0] - 10 Oct 2026
 
 ### Added

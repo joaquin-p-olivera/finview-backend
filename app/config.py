@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     EMAIL_IMPORT_APP_PASSWORD: str | None = None
     EMAIL_IMPORT_IMAP_HOST: str = "imap.gmail.com"
     EMAIL_IMPORT_CRON_SECRET: str | None = None
+    # Fernet key that encrypts stored bank PDF passwords; derived from SECRET_KEY if unset
+    SECRET_BOX_KEY: str | None = None
     EXTERNAL_IMPORT_SECRET: str | None = None
     EXTERNAL_IMPORT_ALLOWED_EMAIL: str | None = None
 
