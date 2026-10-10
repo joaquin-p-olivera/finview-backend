@@ -19,6 +19,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Groq and Gemini statement parsers, `GET /api/v1/statements/{id}/pdf`, the `UPLOAD_DIR`, `GROQ_API_KEY` and `GEMINI_API_KEY` settings, and the `google-generativeai`, `openai`, `pdf2image` and `Pillow` dependencies. ([#49](https://github.com/joaquin-p-olivera/finview-backend/pull/49))
 
+### Fixed
+
+- `GET /api/v1/email-import` and `GET /api/v1/statements/{id}/status` returned 500 in production for a statement still processing: `statements.uploaded_at` has no time zone there and was compared with an aware datetime. A naive value is now read as UTC. ([#PR](https://github.com/joaquin-p-olivera/finview-backend/pull/PR))
+
 ## [1.4.0] - 4 Oct 2026
 
 ### Added

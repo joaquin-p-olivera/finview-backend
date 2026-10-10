@@ -34,6 +34,18 @@ settings = get_settings()
 PROCESSING_TIMEOUT = timedelta(minutes=10)
 
 
+def processing_timed_out(stmt: Statement) -> bool:
+    """True when the statement has been processing longer than PROCESSING_TIMEOUT.
+    statements.uploaded_at is a timestamp without time zone in production (UTC),
+    so a naive value is read as UTC."""
+    if stmt.status != "processing" or stmt.uploaded_at is None:
+        return False
+    uploaded_at = stmt.uploaded_at
+    if uploaded_at.tzinfo is None:
+        uploaded_at = uploaded_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - uploaded_at > PROCESSING_TIMEOUT
+
+
 async def _read_pdf(file: UploadFile) -> bytes:
     """Reads the uploaded PDF into memory, checking type, size and magic bytes.
     The file is never written to disk."""
@@ -132,7 +144,7 @@ def get_statement_status(statement_id: str, db: DbDep, current_user: CurrentUser
     )
     if not stmt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estado de cuenta no encontrado")
-    if stmt.status == "processing" and datetime.now(timezone.utc) - stmt.uploaded_at > PROCESSING_TIMEOUT:
+    if processing_timed_out(stmt):
         # the server restarted mid-parse (the PDF only lived in memory)
         stmt.status = "error"
         stmt.error_message = "El procesamiento se interrumpió. Volvé a subir el PDF."
