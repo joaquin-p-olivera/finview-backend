@@ -5,8 +5,9 @@ Each user forwards to their own address, `local+TOKEN@domain` (Gmail delivers
 plus-addressed mail to the same inbox), so the token in the recipient tells
 whose email it is. PDF attachments are parsed like a web upload and the
 statement waits for review; Gmail's forwarding confirmation is kept so the user
-can see the code in the app. Every email is deleted once handled: the PDF is
-never stored.
+can see the code in the app. Every email sent to a `+TOKEN` address is deleted
+once handled (the PDF is never stored); any other email in the inbox is left
+untouched and unread, so the inbox can also be a personal account.
 """
 
 import email
@@ -15,6 +16,7 @@ import imaplib
 import logging
 import re
 import threading
+from datetime import date, timedelta
 from email.message import EmailMessage
 from email.policy import default as default_policy
 from email.utils import parseaddr
@@ -33,6 +35,8 @@ settings = get_settings()
 
 GMAIL_FORWARDING_SENDER = "forwarding-noreply@google.com"
 _RECIPIENT_HEADERS = ("Delivered-To", "X-Original-To", "To", "Cc")
+# Only recent mail is looked at; the cron runs every hour, so nothing older is pending
+SEARCH_DAYS = 14
 _CONFIRMATION_CODE = re.compile(r"\(#(\d+)\)|(?:code|código)\D{0,5}(\d{6,})", re.IGNORECASE)
 _CONFIRMATION_LINK = re.compile(r"https://mail(?:-settings)?\.google\.com/mail/[^\s\"'<>]+")
 
@@ -173,12 +177,13 @@ def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes)
 
 
 def process_message(db: Session, raw: bytes) -> None:
-    """Handles one email from the inbox. Safe to call again for the same email."""
+    """Handles one email sent to a `+TOKEN` address. Safe to call again for the
+    same email."""
     msg = email.message_from_bytes(raw, policy=default_policy)
     token = _recipient_token(msg)
     user = db.query(User).filter(User.import_token == token).first() if token else None
     if not user:
-        logger.info("Import email without a known recipient token; discarding it")
+        logger.info("Import email for an unknown token; discarding it")
         return
 
     sender = parseaddr(str(msg.get("From", "")))[1].lower()
@@ -245,9 +250,21 @@ def _connect() -> imaplib.IMAP4:
     return imaplib.IMAP4_SSL(settings.EMAIL_IMPORT_IMAP_HOST)
 
 
+def _fetch(imap: imaplib.IMAP4, uid: bytes, item: str) -> bytes | None:
+    # PEEK keeps the email unread, which matters for the ones that aren't ours
+    status, fetched = imap.uid("FETCH", uid, f"({item})")
+    if status != "OK":
+        return None
+    return next((part[1] for part in fetched or [] if isinstance(part, tuple)), None)
+
+
+def _is_import_email(headers: bytes) -> bool:
+    return _recipient_token(email.message_from_bytes(headers, policy=default_policy)) is not None
+
+
 def run_import() -> int:
-    """Processes every email in the inbox. Returns how many it handled; 0 when
-    another run is still going."""
+    """Processes the recent emails sent to a `+TOKEN` address. Returns how many
+    it handled; 0 when another run is still going."""
     if not is_configured():
         return 0
     if not _run_lock.acquire(blocking=False):
@@ -258,16 +275,19 @@ def run_import() -> int:
         try:
             imap.login(settings.EMAIL_IMPORT_ADDRESS, settings.EMAIL_IMPORT_APP_PASSWORD)
             imap.select("INBOX")
-            status, data = imap.uid("SEARCH", None, "ALL")
+            since = (date.today() - timedelta(days=SEARCH_DAYS)).strftime("%d-%b-%Y")
+            status, data = imap.uid("SEARCH", None, "SINCE", since)
             uids = data[0].split() if status == "OK" and data and data[0] else []
             if not uids:
                 return 0
             trash = _trash_folder(imap)
             handled = 0
             for uid in uids:
-                status, fetched = imap.uid("FETCH", uid, "(RFC822)")
-                raw = next((part[1] for part in fetched or [] if isinstance(part, tuple)), None)
-                if status != "OK" or raw is None:
+                headers = _fetch(imap, uid, "BODY.PEEK[HEADER]")
+                if headers is None or not _is_import_email(headers):
+                    continue
+                raw = _fetch(imap, uid, "BODY.PEEK[]")
+                if raw is None:
                     continue
                 db = SessionLocal()
                 try:
