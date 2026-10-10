@@ -127,7 +127,7 @@ def regenerate_address(db: DbDep, current_user: CurrentUserDep):
     return _overview(db, current_user)
 
 
-@router.get("/passwords", response_model=list[BankPasswordItem])
+@router.get("/pdf-passwords", response_model=list[BankPasswordItem])
 def list_bank_passwords(db: DbDep, current_user: CurrentUserDep):
     """Banks the user saved a PDF password for (the passwords are never returned)."""
     return (
@@ -138,7 +138,7 @@ def list_bank_passwords(db: DbDep, current_user: CurrentUserDep):
     )
 
 
-@router.put("/passwords", response_model=BankPasswordItem)
+@router.put("/pdf-passwords", response_model=BankPasswordItem)
 def save_bank_password(payload: BankPasswordIn, db: DbDep, current_user: CurrentUserDep):
     """Saves (encrypted) the password of a bank's protected PDFs, replacing the
     one saved for that bank, so the email import can open them."""
@@ -161,7 +161,7 @@ def save_bank_password(payload: BankPasswordIn, db: DbDep, current_user: Current
     return row
 
 
-@router.delete("/passwords/{password_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/pdf-passwords/{password_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bank_password(password_id: str, db: DbDep, current_user: CurrentUserDep):
     row = (
         db.query(BankPdfPassword)

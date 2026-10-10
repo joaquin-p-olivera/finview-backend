@@ -119,9 +119,9 @@ module (see below for that).
 | DELETE | `/statements/{id}` | Delete a statement |
 | GET | `/email-import` | Import by email: `enabled`, the user's forwarding `address` (created on first call), Gmail's latest forwarding confirmation (`code`, `link`, last 7 days) and the last 20 imported attachments with their statement status |
 | POST | `/email-import/token` | New forwarding address; the old one stops working |
-| GET | `/email-import/passwords` | Banks with a saved PDF password (`id`, `bank_name`, `updated_at`; the password is never returned) |
-| PUT | `/email-import/passwords` | Save `{bank_name, password}` (encrypted); replaces the one for that bank, ignoring case |
-| DELETE | `/email-import/passwords/{id}` | Remove a saved password |
+| GET | `/email-import/pdf-passwords` | Banks with a saved PDF password (`id`, `bank_name`, `updated_at`; the password is never returned) |
+| PUT | `/email-import/pdf-passwords` | Save `{bank_name, password}` (encrypted); replaces the one for that bank, ignoring case |
+| DELETE | `/email-import/pdf-passwords/{id}` | Remove a saved password |
 | POST | `/email-import/run` | Reads the import inbox (header `X-Cron-Secret` = `EMAIL_IMPORT_CRON_SECRET`; called hourly by cron-job.org). Returns 202 and works in the background: each PDF is parsed like an upload and waits in `pending_review`; password-protected PDFs are opened with the user's saved bank passwords (below) and rejected if none works; only emails sent to a `+TOKEN` address from the last 14 days are read, and only those are moved to the trash: any other email stays untouched and unread, so the inbox can be an existing personal account |
 | POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. Optional `summary` (bank's official totals: `statement_total_uyu/usd`, insurance, interest, fees...) is stored in `statements.raw_json.summary` and used by `/stats/statement-report`. |
 | GET | `/transactions/` | List transactions (filters + pagination) |
