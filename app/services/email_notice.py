@@ -1,14 +1,17 @@
 """Tells a user by email that the import inbox handled one of their statements.
 
-Sent through Gmail's SMTP from the import inbox itself (same address and app
-password as the IMAP side), to the user's own email, never to their `+TOKEN`
-address, so the import never reads its own notices. Sending is best effort: a
-failure is logged and never affects the import. Gmail allows ~500 sends a day
-and some notices may land in spam.
+Sent through Resend's HTTPS API when `RESEND_API_KEY` is set, else through Gmail's
+SMTP from the import inbox itself (same address and app password as the IMAP
+side); Render's free plan blocks SMTP ports, so there only Resend works. Goes to
+the user's own email, never to their `+TOKEN` address, so the import never reads
+its own notices. Sending is best effort: a failure is logged and never affects the
+import. Some notices may land in spam.
 """
 
+import json
 import logging
 import smtplib
+import urllib.request
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape
@@ -23,6 +26,7 @@ settings = get_settings()
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_TIMEOUT = 20
+RESEND_URL = "https://api.resend.com/emails"
 _LOCAL_HOSTS = ("localhost", "127.0.0.1")
 
 
@@ -34,22 +38,46 @@ def frontend_url() -> str | None:
     return None
 
 
-def _send(user: User, subject: str, text: str, html: str) -> None:
-    if not settings.EMAIL_IMPORT_ADDRESS or not settings.EMAIL_IMPORT_APP_PASSWORD:
-        return
-    if not getattr(user, "email_notifications", True) or not user.email:
-        return
+def _send_resend(to: str, subject: str, text: str, html: str) -> None:
+    body = json.dumps(
+        {"from": settings.RESEND_FROM, "to": [to], "subject": subject, "text": text, "html": html}
+    ).encode()
+    request = urllib.request.Request(
+        RESEND_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            # Resend sits behind Cloudflare, which rejects urllib's default agent
+            "User-Agent": "finview-backend",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=SMTP_TIMEOUT):
+        pass
+
+
+def _send_smtp(to: str, subject: str, text: str, html: str) -> None:
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = formataddr(("Finview", settings.EMAIL_IMPORT_ADDRESS))
-    msg["To"] = user.email
+    msg["To"] = to
     msg.set_content(text)
     msg.add_alternative(html, subtype="html")
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT) as smtp:
+        smtp.starttls()
+        smtp.login(settings.EMAIL_IMPORT_ADDRESS, settings.EMAIL_IMPORT_APP_PASSWORD)
+        smtp.send_message(msg)
+
+
+def _send(user: User, subject: str, text: str, html: str) -> None:
+    if not getattr(user, "email_notifications", True) or not user.email:
+        return
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT) as smtp:
-            smtp.starttls()
-            smtp.login(settings.EMAIL_IMPORT_ADDRESS, settings.EMAIL_IMPORT_APP_PASSWORD)
-            smtp.send_message(msg)
+        if settings.RESEND_API_KEY:
+            _send_resend(user.email, subject, text, html)
+        elif settings.EMAIL_IMPORT_ADDRESS and settings.EMAIL_IMPORT_APP_PASSWORD:
+            _send_smtp(user.email, subject, text, html)
     except Exception:  # noqa: BLE001
         logger.exception("Could not send the import notice to user %s", user.id)
 

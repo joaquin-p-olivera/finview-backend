@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     EMAIL_IMPORT_APP_PASSWORD: str | None = None
     EMAIL_IMPORT_IMAP_HOST: str = "imap.gmail.com"
     EMAIL_IMPORT_CRON_SECRET: str | None = None
+    # Notice emails go out through Resend (HTTPS) when this is set; otherwise through Gmail SMTP,
+    # which hosts like Render's free plan block
+    RESEND_API_KEY: str | None = None
+    RESEND_FROM: str = "Finview <onboarding@resend.dev>"
     EXTERNAL_IMPORT_SECRET: str | None = None
     EXTERNAL_IMPORT_ALLOWED_EMAIL: str | None = None
 
