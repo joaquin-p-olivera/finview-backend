@@ -54,10 +54,18 @@ def _send(user: User, subject: str, text: str, html: str) -> None:
         logger.exception("Could not send the import notice to user %s", user.id)
 
 
+_CURRENCIES = {"UYU": ("PESOS (UYU)", "$"), "USD": ("DÓLARES (USD)", "US$")}
+
+
 def _money(amount: float, currency: str) -> str:
     # 12.345,67 like the app, whatever the server locale
     text = f"{abs(amount):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"{'-' if amount < 0 else ''}{currency} {text}"
+    symbol = _CURRENCIES.get(currency, (currency, currency))[1]
+    return f"{'-' if amount < 0 else ''}{symbol} {text}"
+
+
+def _count(count: int) -> str:
+    return f"{count} {'movimiento' if count == 1 else 'movimientos'}"
 
 
 def statement_totals(stmt: Statement) -> list[tuple[str, float, int]]:
@@ -86,44 +94,106 @@ def _period(stmt: Statement) -> str | None:
     return None
 
 
-def _page(heading: str, lines: list[str], link: tuple[str, str] | None) -> tuple[str, str]:
-    """Plain text and HTML versions of a notice: a heading, paragraphs and an optional (label, url) link."""
-    text = "\n\n".join([heading, *lines] + ([f"{link[0]}: {link[1]}"] if link else []))
-    paragraphs = "".join(f'<p style="margin:0 0 12px">{escape(line)}</p>' for line in lines)
+_LOGO_MARK = "apple-touch-icon.png"
+_FOOTER = "Finview · Recibís este aviso porque tu casilla de importación procesó un estado de cuenta."
+_FONT = "font-family:Arial,Helvetica,sans-serif"
+
+
+def _html_page(
+    heading: str,
+    subtitle: str,
+    body: str,
+    link: tuple[str, str] | None,
+    base: str | None,
+) -> str:
+    """Finview-styled HTML: dark header with the logo (the app's mark when the frontend URL is
+    known), light body with `body` (already escaped HTML) and an optional (label, url) button.
+    Table layout and inline styles, which is what email clients support."""
+    logo = (
+        f'<td style="padding-right:10px"><img src="{escape(base, quote=True)}/{_LOGO_MARK}" width="36" '
+        'height="36" alt="" style="display:block;border-radius:8px"></td>'
+        if base
+        else ""
+    )
     button = (
-        f'<p style="margin:20px 0"><a href="{escape(link[1], quote=True)}" '
-        'style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">'
-        f"{escape(link[0])}</a></p>"
+        f'<a href="{escape(link[1], quote=True)}" style="display:inline-block;background:#4f46e5;color:#ffffff;'
+        f'padding:11px 20px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:bold">'
+        f"{escape(link[0])}</a>"
         if link
         else ""
     )
-    html = (
-        '<div style="font-family:Arial,sans-serif;color:#1f2937;max-width:520px">'
-        f'<h2 style="margin:0 0 16px">{escape(heading)}</h2>{paragraphs}{button}'
-        "</div>"
+    return (
+        f'<div style="background:#f1f5f9;padding:24px 12px;{_FONT}">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="max-width:560px;margin:0 auto;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">'
+        f'<tr><td style="background:#020617;padding:18px 24px"><table role="presentation" cellpadding="0" '
+        f'cellspacing="0"><tr>{logo}<td style="font-size:20px;font-weight:bold;color:#f8fafc">'
+        'Fin<span style="color:#818cf8">view</span></td></tr></table></td></tr>'
+        '<tr><td style="background:#ffffff;color:#1f2937;padding:24px">'
+        f'<h2 style="margin:0 0 4px;font-size:20px;color:#0f172a">{escape(heading)}</h2>'
+        f'<p style="margin:0 0 18px;color:#64748b;font-size:14px">{escape(subtitle)}</p>'
+        f"{body}{button}</td></tr>"
+        f'<tr><td style="background:#f8fafc;color:#94a3b8;font-size:12px;padding:14px 24px;'
+        f'border-top:1px solid #e2e8f0">{_FOOTER}</td></tr></table></div>'
     )
-    return text, html
+
+
+def _totals_card(totals: list[tuple[str, float, int]]) -> str:
+    rows = ""
+    for index, (currency, total, count) in enumerate(totals):
+        label = _CURRENCIES.get(currency, (currency, ""))[0]
+        border = "" if index == len(totals) - 1 else "border-bottom:1px solid #e2e8f0;"
+        rows += (
+            f'<tr><td style="padding:12px 16px;{border}"><div style="font-size:12px;font-weight:bold;'
+            f'color:#64748b;letter-spacing:0.5px">{escape(label)}</div>'
+            f'<div style="font-size:12px;color:#64748b">{_count(count)}</div></td>'
+            f'<td align="right" style="padding:12px 16px;{border}font-size:20px;font-weight:bold;color:#0f172a">'
+            f"{escape(_money(total, currency))}</td></tr>"
+        )
+    return (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'style="border:1px solid #e2e8f0;border-radius:10px;margin-bottom:18px">{rows}</table>'
+    )
 
 
 def notify_statement_imported(user: User, stmt: Statement) -> None:
     """The statement was parsed and is waiting for review."""
     bank = stmt.bank_name or "Tu banco"
-    lines = [f"{bank} - {_period(stmt)}" if _period(stmt) else bank]
-    for currency, total, count in statement_totals(stmt):
-        lines.append(f"{_money(total, currency)} ({count} {'movimiento' if count == 1 else 'movimientos'})")
-    lines.append("Revisalo y confirmalo para que entre en tus reportes.")
+    subtitle = f"{bank} · {_period(stmt)}" if _period(stmt) else bank
+    totals = statement_totals(stmt)
+    note = "Revisalo y confirmalo para que entre en tus reportes."
     base = frontend_url()
     link = ("Revisar el estado", f"{base}/review/{stmt.id}") if base else None
     heading = "Llegó tu estado de cuenta"
-    text, html = _page(heading, lines, link)
-    _send(user, f"{heading}: {bank}", text, html)
+
+    text_lines = [heading, subtitle] + [f"{_money(t, c)} ({_count(n)})" for c, t, n in totals] + [note]
+    if link:
+        text_lines.append(f"{link[0]}: {link[1]}")
+    html = _html_page(
+        heading,
+        subtitle,
+        f'{_totals_card(totals)}<p style="margin:0 0 18px;font-size:14px">{escape(note)}</p>',
+        link,
+        base,
+    )
+    _send(user, f"Finview - {heading}", "\n\n".join(text_lines), html)
 
 
 def notify_import_failed(user: User, filename: str, reason: str) -> None:
     """A PDF from the inbox could not be imported (protected, unreadable...)."""
-    lines = [f"No pudimos importar {filename}.", reason]
     base = frontend_url()
     link = ("Ver importaciones", f"{base}/email-import") if base else None
     heading = "No pudimos importar tu estado de cuenta"
-    text, html = _page(heading, lines, link)
-    _send(user, heading, text, html)
+
+    text_lines = [heading, filename, reason]
+    if link:
+        text_lines.append(f"{link[0]}: {link[1]}")
+    html = _html_page(
+        heading,
+        filename,
+        '<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;'
+        f'padding:12px 16px;font-size:14px;margin-bottom:18px">{escape(reason)}</div>',
+        link,
+        base,
+    )
+    _send(user, f"Finview - {heading}", "\n\n".join(text_lines), html)
