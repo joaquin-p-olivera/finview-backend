@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GmailConfirmation(BaseModel):
@@ -25,8 +25,25 @@ class EmailImportItem(BaseModel):
   period_end: Optional[date] = None
 
 
+class NotificationsUpdate(BaseModel):
+  enabled: bool
+
+
 class EmailImportOverview(BaseModel):
   enabled: bool
+  notifications: bool = True
   address: Optional[str] = None
   gmail_confirmation: Optional[GmailConfirmation] = None
   imports: List[EmailImportItem]
+
+
+class BankPasswordIn(BaseModel):
+  bank_name: str = Field(min_length=1, max_length=100)
+  password: str = Field(min_length=1, max_length=200)
+
+
+class BankPasswordItem(BaseModel):
+  """The password itself is never returned."""
+  id: str
+  bank_name: str
+  updated_at: datetime

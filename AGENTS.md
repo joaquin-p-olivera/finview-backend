@@ -31,7 +31,7 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DATABASE_URL` | MySQL connection string | Yes |
-| `SECRET_KEY` | JWT secret key | Yes |
+| `SECRET_KEY` | JWT secret key. It also derives (HKDF) the key that encrypts the saved bank PDF passwords (`app/services/secret_box.py`), so rotating it logs everyone out and makes those passwords unreadable: users enter them again | Yes |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
 | `ANTHROPIC_API_KEY` | Claude API key, used to parse statement PDFs (`app/services/statement_parser.py`) and categorize purchase products (`app/services/purchase_ai.py`). Without it both are off | No |
 | `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
@@ -40,8 +40,10 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
 | `EXTERNAL_IMPORT_ALLOWED_EMAIL` | Only this account can use `POST /api/v1/statements/external` | No |
 | `EMAIL_IMPORT_ADDRESS` | Gmail inbox users forward their bank emails to (`app/services/email_import.py`). Each user gets `local+TOKEN@domain`. Without it (or the app password) import by email is off | No |
-| `EMAIL_IMPORT_APP_PASSWORD` | Gmail app password for that inbox (needs 2-step verification), used over IMAP | No |
+| `EMAIL_IMPORT_APP_PASSWORD` | Gmail app password for that inbox (needs 2-step verification), used over IMAP and to send the notice emails over SMTP | No |
 | `EMAIL_IMPORT_IMAP_HOST` | IMAP server (default `imap.gmail.com`) | No |
+| `RESEND_API_KEY` | Resend API key. When set, notice emails (`app/services/email_notice.py`) are sent through Resend over HTTPS; otherwise through the import inbox's Gmail SMTP, which Render's free plan blocks (outbound ports 25, 465, 587). Without a verified domain Resend only delivers to the email of the Resend account | No |
+| `RESEND_FROM` | Sender of those emails (default `Finview <onboarding@resend.dev>`; with a verified domain, an address on it) | No |
 | `EMAIL_IMPORT_CRON_SECRET` | Secret the cron sends as `X-Cron-Secret` to `POST /api/v1/email-import/run` | No |
 
 ### Environment Files
@@ -86,7 +88,7 @@ app/
 
 | Table | Description |
 |-------|-------------|
-| `users` | User accounts |
+| `users` | User accounts (`email_notifications`: send the import notice email) |
 | `purchase_carts` | Shopping carts (active/completed) |
 | `purchase_cart_items` | Items in carts |
 | `purchase_lists` | Shopping lists (planning) |
@@ -95,6 +97,7 @@ app/
 | `purchase_stores` | User's list of supermarkets; `purchase_carts.store_id` points here and `store_name` keeps a copy of the name |
 | `purchase_products` | Products the user buys ("Agua 6L"), with an optional category and size; every cart item points to one via `product_id` |
 | `email_imports` | What the import inbox received for a user: one row per PDF attachment (`kind=statement`, with `statement_id`) or Gmail's forwarding confirmation (`kind=gmail_confirmation`, code and link in `details`). The email itself is deleted. `users.import_token` is the user's forwarding address token and `statements.source` is `upload`, `email` or null (older rows) |
+| `bank_pdf_passwords` | Per user and bank (unique on `user_id` + lowercase `bank_key`), the password of that bank's protected statement PDFs, Fernet-encrypted in `password_encrypted`. The email import tries them on protected PDFs, banks named in the sender, subject or filename first |
 | `purchase_product_aliases` | Normalized names (`app/services/purchase_products.normalize_name`) that map to a product, so "Limones" finds "Limon" |
 
 There is no `create_all` at startup. Schema changes are SQL scripts in `sql/`, run by hand on Postgres (Render) before deploying the code that needs them.
@@ -116,8 +119,12 @@ module (see below for that).
 | POST | `/statements/{id}/confirm` | Save reviewed/edited transactions as confirmed |
 | DELETE | `/statements/{id}` | Delete a statement |
 | GET | `/email-import` | Import by email: `enabled`, the user's forwarding `address` (created on first call), Gmail's latest forwarding confirmation (`code`, `link`, last 7 days) and the last 20 imported attachments with their statement status |
+| PUT | `/email-import/notifications` | Body `{enabled}`: turns the notice email on or off for the user (`users.email_notifications`, on by default; also returned as `notifications` by `GET /email-import`). When the import inbox handles a PDF the user gets an email (`app/services/email_notice.py`): bank, period, totals per currency and a link to review it, or the reason it failed (e.g. protected PDF). Sent through Resend (HTTPS) when `RESEND_API_KEY` is set, else through Gmail SMTP (`smtp.gmail.com:587`) from the import inbox with `EMAIL_IMPORT_ADDRESS` / `EMAIL_IMPORT_APP_PASSWORD` (blocked on Render's free plan), to the user's email (never their `+TOKEN` address); the link and the logo (`apple-touch-icon.png`) use the first non-localhost `CORS_ORIGINS` entry (without one the email has neither). Subjects start with `Finview - `. Best effort: a send error is only logged. Nothing is sent for duplicates or emails without a PDF |
 | POST | `/email-import/token` | New forwarding address; the old one stops working |
-| POST | `/email-import/run` | Reads the import inbox (header `X-Cron-Secret` = `EMAIL_IMPORT_CRON_SECRET`; called hourly by cron-job.org). Returns 202 and works in the background: each PDF is parsed like an upload and waits in `pending_review`; password-protected PDFs are rejected (upload them from the web); only emails sent to a `+TOKEN` address from the last 14 days are read, and only those are moved to the trash: any other email stays untouched and unread, so the inbox can be an existing personal account |
+| GET | `/email-import/pdf-passwords` | Banks with a saved PDF password (`id`, `bank_name`, `updated_at`; the password is never returned) |
+| PUT | `/email-import/pdf-passwords` | Save `{bank_name, password}` (encrypted); replaces the one for that bank, ignoring case |
+| DELETE | `/email-import/pdf-passwords/{id}` | Remove a saved password |
+| POST | `/email-import/run` | Reads the import inbox (header `X-Cron-Secret` = `EMAIL_IMPORT_CRON_SECRET`; called hourly by cron-job.org). Returns 202 and works in the background: each PDF is parsed like an upload and waits in `pending_review`; password-protected PDFs are opened with the user's saved bank passwords (below) and rejected if none works; only emails sent to a `+TOKEN` address from the last 14 days are read, and only those are moved to the trash: any other email stays untouched and unread, so the inbox can be an existing personal account |
 | POST | `/statements/external` | Trusted external import — accepts an already-parsed statement as JSON (`category_name` per transaction, not `category_id`) and saves it directly as `confirmed`, skipping upload and review. Requires `X-External-Import-Key` header matching `EXTERNAL_IMPORT_SECRET`, and only works for the account in `EXTERNAL_IMPORT_ALLOWED_EMAIL`. Built for the Apps Script automation, not the web app. Optional `summary` (bank's official totals: `statement_total_uyu/usd`, insurance, interest, fees...) is stored in `statements.raw_json.summary` and used by `/stats/statement-report`. |
 | GET | `/transactions/` | List transactions (filters + pagination) |
 | DELETE | `/transactions/{id}` | Delete a transaction |
@@ -130,6 +137,7 @@ module (see below for that).
 | GET | `/stats/summary` | Totals: transaction count, current/previous month spend, categories/statements count |
 | GET | `/stats/by-month?months=N` | Spend grouped by calendar month |
 | GET | `/stats/by-category?period=all\|latest` | Spend grouped by category. `latest` scopes to the date range of the most recently confirmed statement (by `period_end`) instead of all-time |
+| GET | `/stats/category-trends?months=N&bank=` | Spend per category month by month (calendar month of the transaction date), last N months (default 6, max 24) ending at the latest transaction, zeros for empty months. Returns `{months, categories: [{category, totals, total}], totals}`; `bank` narrows to one bank (names from `/by-bank`). Accepts `currency` |
 | GET | `/stats/by-bank?period=all\|latest` | Spend grouped by bank; same `period` semantics |
 | GET | `/stats/top-merchants?limit=N&period=all\|latest` | Top merchants by spend; same `period` semantics |
 | GET | `/stats/statement-report?statement_id=` | One confirmed statement (default: latest by `period_end`) broken down by currency and category, like the monthly report email. Amounts keep their sign. `statement_total` and `other_charges` (official total minus categorized) come from `raw_json.summary` and are `null` when the statement has none |

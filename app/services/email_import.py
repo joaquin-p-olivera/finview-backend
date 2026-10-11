@@ -8,6 +8,8 @@ statement waits for review; Gmail's forwarding confirmation is kept so the user
 can see the code in the app. Every email sent to a `+TOKEN` address is deleted
 once handled (the PDF is never stored); any other email in the inbox is left
 untouched and unread, so the inbox can also be a personal account.
+
+Once a PDF is handled the user gets an email about it (`email_notice`).
 """
 
 import email
@@ -25,10 +27,11 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import SessionLocal
+from ..models.bank_pdf_password import BankPdfPassword
 from ..models.email_import import EmailImport
 from ..models.statement import Statement
 from ..models.user import User
-from . import statement_import, statement_parser
+from . import email_notice, secret_box, statement_import, statement_parser
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -41,7 +44,10 @@ _CONFIRMATION_CODE = re.compile(r"\(#(\d+)\)|(?:code|código)\D{0,5}(\d{6,})", r
 _CONFIRMATION_LINK = re.compile(r"https://mail(?:-settings)?\.google\.com/mail/[^\s\"'<>]+")
 
 PASSWORD_PROTECTED_MESSAGE = (
-    "El PDF está protegido con contraseña: subilo a mano desde la web ingresando la contraseña."
+    "El PDF está protegido con contraseña: guardala en Importar por mail (por banco) o subilo a mano desde la web."
+)
+PASSWORD_NOT_ACCEPTED_MESSAGE = (
+    "Ninguna de las contraseñas guardadas abre este PDF: revisalas en Importar por mail o subilo a mano desde la web."
 )
 
 _run_lock = threading.Lock()
@@ -118,7 +124,29 @@ def _already_handled(db: Session, user_id: str, message_id: str, filename: str) 
     )
 
 
-def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes) -> None:
+def _decrypt_with_saved_passwords(
+    db: Session, user_id: str, data: bytes, hints: list[str]
+) -> bytes:
+    """Opens a protected PDF with the user's saved bank passwords. Banks whose
+    name appears in the sender, subject or filename are tried first; the rest
+    follow, since the bank is not always recognizable from the email."""
+    rows = db.query(BankPdfPassword).filter(BankPdfPassword.user_id == user_id).all()
+    if not rows:
+        raise statement_parser.PdfPasswordError(PASSWORD_PROTECTED_MESSAGE)
+    haystack = " ".join(hints).lower()
+    rows.sort(key=lambda row: row.bank_key not in haystack)
+    for row in rows:
+        password = secret_box.decrypt(row.password_encrypted)
+        if not password:
+            continue
+        try:
+            return statement_parser.decrypt_pdf(data, password)
+        except statement_parser.PdfPasswordError:
+            continue
+    raise statement_parser.PdfPasswordError(PASSWORD_NOT_ACCEPTED_MESSAGE)
+
+
+def _import_attachment(db: Session, user: User, base: dict, filename: str, data: bytes) -> None:
     user_id = str(user.id)
     if _already_handled(db, user_id, base["message_id"], filename):
         return
@@ -145,10 +173,15 @@ def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes)
         return
 
     try:
-        pdf_bytes = statement_parser.decrypt_pdf(data, None)
-    except statement_parser.PdfPasswordError:
+        try:
+            pdf_bytes = statement_parser.decrypt_pdf(data, None)
+        except statement_parser.PdfPasswordError:
+            pdf_bytes = _decrypt_with_saved_passwords(
+                db, user_id, data, [filename, base.get("sender") or "", base.get("subject") or ""]
+            )
+    except statement_parser.PdfPasswordError as exc:
         row.status = "error"
-        row.error_message = PASSWORD_PROTECTED_MESSAGE
+        row.error_message = str(exc)
         db.add(row)
         db.commit()
         return
@@ -174,6 +207,33 @@ def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes)
     row.status = "error" if stmt.status == "error" else "done"
     row.error_message = stmt.error_message if stmt.status == "error" else None
     db.commit()
+
+
+def _import_pdf(db: Session, user: User, base: dict, filename: str, data: bytes) -> None:
+    """Imports one PDF attachment and tells the user how it went. Nothing is sent
+    for a PDF already handled or a duplicate."""
+    user_id = str(user.id)
+    if _already_handled(db, user_id, base["message_id"], filename):
+        return
+    _import_attachment(db, user, base, filename, data)
+
+    row = (
+        db.query(EmailImport)
+        .filter(
+            EmailImport.user_id == user_id,
+            EmailImport.message_id == base["message_id"],
+            EmailImport.filename == filename[:255],
+        )
+        .first()
+    )
+    if not row:
+        return
+    if row.status == "error":
+        email_notice.notify_import_failed(user, filename, row.error_message or "Hubo un error al procesar el PDF.")
+    elif row.status == "done":
+        stmt = db.get(Statement, row.statement_id) if row.statement_id else None
+        if stmt:
+            email_notice.notify_statement_imported(user, stmt)
 
 
 def process_message(db: Session, raw: bytes) -> None:
