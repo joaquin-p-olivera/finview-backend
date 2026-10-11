@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 11 Oct 2026
+
 ### Added
 
 - `GET /api/v1/stats/category-trends`: spend per category month by month (last `months` months ending at the latest transaction, empty months as zeros), optionally for one `bank` and one `currency`, with the monthly totals. Feeds the new evolution page of the frontend. ([#63](https://github.com/joaquin-p-olivera/finview-backend/pull/63))
