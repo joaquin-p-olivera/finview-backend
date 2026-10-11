@@ -190,6 +190,72 @@ def get_by_category(
     return result
 
 
+def _month_key(day: date) -> str:
+    return f"{day.year}-{day.month:02d}"
+
+
+def _previous_months(last: date, count: int) -> list[str]:
+    """`count` consecutive months ending at `last`'s month, oldest first."""
+    year, month = last.year, last.month
+    keys = []
+    for _ in range(count):
+        keys.append(f"{year}-{month:02d}")
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    return keys[::-1]
+
+
+@router.get("/category-trends")
+def get_category_trends(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    currency: CurrencyQuery = None,
+    bank: str | None = None,
+    months: int = Query(default=6, ge=1, le=24),
+):
+    """
+    Spend per category month by month (calendar month of the transaction date, like
+    /by-month), for the last `months` months ending at the user's latest transaction.
+    Months with no spend are included with zeros so the series line up. Optional
+    `bank` narrows it to one bank's statements (the names `/by-bank` returns).
+    """
+    filters = [Transaction.user_id == str(current_user.id), *_currency_filters(currency)]
+    query = db.query(Transaction.date, Transaction.amount, Category.name).outerjoin(
+        Category, Transaction.category_id == Category.id
+    )
+    if bank:
+        query = query.join(Statement, Transaction.statement_id == Statement.id).filter(
+            Statement.bank_name == bank
+        )
+
+    latest = query.with_entities(func.max(Transaction.date)).filter(*filters).scalar()
+    if not latest:
+        return {"months": [], "categories": [], "totals": []}
+
+    keys = _previous_months(latest, months)
+    first_year, first_month = (int(part) for part in keys[0].split("-"))
+    rows = query.filter(*filters, Transaction.date >= date(first_year, first_month, 1)).all()
+
+    index = {key: i for i, key in enumerate(keys)}
+    by_category: dict[str, list[float]] = {}
+    for day, amount, name in rows:
+        series = by_category.setdefault(name or "Sin categoría", [0.0] * len(keys))
+        series[index[_month_key(day)]] += abs(float(amount))
+
+    categories = [
+        {"category": name, "totals": [round(v, 2) for v in series], "total": round(sum(series), 2)}
+        for name, series in by_category.items()
+    ]
+    # biggest spenders first, "Sin categoría" always last
+    categories.sort(key=lambda c: (c["category"] == "Sin categoría", -c["total"]))
+    return {
+        "months": keys,
+        "categories": categories,
+        "totals": [round(sum(c["totals"][i] for c in categories), 2) for i in range(len(keys))],
+    }
+
+
 @router.get("/by-bank")
 def get_by_bank(
     db: DbDep,

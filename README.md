@@ -44,7 +44,7 @@ All routes are under `/api/v1`.
 | `/email-import` | Import statements by forwarding the bank email to the user's Finview address; a cron reads the Gmail import inbox |
 | `/transactions` | List (with filters/pagination) and delete transactions |
 | `/categories` | CRUD for expense categories |
-| `/stats` | Dashboard aggregates — summary, by-month, by-category, by-bank, top-merchants, trends. Several accept `?period=all|latest` to scope to the most recently confirmed statement's date range, and all accept `?currency=UYU|USD`. `statement-report` gives one statement's breakdown by currency and category |
+| `/stats` | Dashboard aggregates — summary, by-month, by-category, category-trends, by-bank, top-merchants, trends. Several accept `?period=all|latest` to scope to the most recently confirmed statement's date range, and all accept `?currency=UYU|USD`. `statement-report` gives one statement's breakdown by currency and category |
 | `/purchase` | Independent module: shopping carts, shopping lists, purchase categories, purchase stats |
 
 ## Deployment

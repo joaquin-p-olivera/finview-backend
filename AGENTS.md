@@ -137,6 +137,7 @@ module (see below for that).
 | GET | `/stats/summary` | Totals: transaction count, current/previous month spend, categories/statements count |
 | GET | `/stats/by-month?months=N` | Spend grouped by calendar month |
 | GET | `/stats/by-category?period=all\|latest` | Spend grouped by category. `latest` scopes to the date range of the most recently confirmed statement (by `period_end`) instead of all-time |
+| GET | `/stats/category-trends?months=N&bank=` | Spend per category month by month (calendar month of the transaction date), last N months (default 6, max 24) ending at the latest transaction, zeros for empty months. Returns `{months, categories: [{category, totals, total}], totals}`; `bank` narrows to one bank (names from `/by-bank`). Accepts `currency` |
 | GET | `/stats/by-bank?period=all\|latest` | Spend grouped by bank; same `period` semantics |
 | GET | `/stats/top-merchants?limit=N&period=all\|latest` | Top merchants by spend; same `period` semantics |
 | GET | `/stats/statement-report?statement_id=` | One confirmed statement (default: latest by `period_end`) broken down by currency and category, like the monthly report email. Amounts keep their sign. `statement_total` and `other_charges` (official total minus categorized) come from `raw_json.summary` and are `null` when the statement has none |

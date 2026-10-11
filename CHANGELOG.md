@@ -9,6 +9,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `GET /api/v1/stats/category-trends`: spend per category month by month (last `months` months ending at the latest transaction, empty months as zeros), optionally for one `bank` and one `currency`, with the monthly totals. Feeds the new evolution page of the frontend. ([#63](https://github.com/joaquin-p-olivera/finview-backend/pull/63))
+
 - Notice emails can be sent through Resend over HTTPS: set `RESEND_API_KEY` (and optionally `RESEND_FROM`, default `Finview <onboarding@resend.dev>`). Render's free plan blocks outbound SMTP ports, so the Gmail SMTP path added with the notice emails could not connect there (`Network is unreachable`); without the key it is still used. Without a verified domain Resend only delivers to the email of your Resend account. ([#61](https://github.com/joaquin-p-olivera/finview-backend/pull/61))
 
 - Saved PDF passwords per bank for the email import, so protected statements (Santander uses the holder's ID number) can be imported without uploading them by hand: `GET/PUT /api/v1/email-import/pdf-passwords` and `DELETE /api/v1/email-import/pdf-passwords/{id}`. Passwords are stored encrypted with Fernet (key derived from `SECRET_KEY`; rotating it makes them unreadable) and never returned by the API. On a protected PDF the import tries the saved passwords, those of banks named in the sender, subject or filename first. Needs `sql/2026-10-10-bank-pdf-passwords.sql` run on the database before deploying. ([#58](https://github.com/joaquin-p-olivera/finview-backend/pull/58))
