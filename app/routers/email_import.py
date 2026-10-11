@@ -9,11 +9,18 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import get_db
 from ..dependencies import get_current_user
+from ..models.bank_pdf_password import BankPdfPassword
 from ..models.email_import import EmailImport
 from ..models.statement import Statement
 from ..models.user import User
-from ..schemas.email_import import EmailImportItem, EmailImportOverview, GmailConfirmation
-from ..services import email_import
+from ..schemas.email_import import (
+    BankPasswordIn,
+    BankPasswordItem,
+    EmailImportItem,
+    EmailImportOverview,
+    GmailConfirmation,
+)
+from ..services import email_import, secret_box
 from .statements import processing_timed_out
 
 
@@ -118,6 +125,53 @@ def regenerate_address(db: DbDep, current_user: CurrentUserDep):
         )
     _new_token(db, current_user)
     return _overview(db, current_user)
+
+
+@router.get("/pdf-passwords", response_model=list[BankPasswordItem])
+def list_bank_passwords(db: DbDep, current_user: CurrentUserDep):
+    """Banks the user saved a PDF password for (the passwords are never returned)."""
+    return (
+        db.query(BankPdfPassword)
+        .filter(BankPdfPassword.user_id == str(current_user.id))
+        .order_by(BankPdfPassword.bank_name)
+        .all()
+    )
+
+
+@router.put("/pdf-passwords", response_model=BankPasswordItem)
+def save_bank_password(payload: BankPasswordIn, db: DbDep, current_user: CurrentUserDep):
+    """Saves (encrypted) the password of a bank's protected PDFs, replacing the
+    one saved for that bank, so the email import can open them."""
+    bank_name = payload.bank_name.strip()
+    if not bank_name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Falta el nombre del banco.")
+    key = bank_name.lower()
+    row = (
+        db.query(BankPdfPassword)
+        .filter(BankPdfPassword.user_id == str(current_user.id), BankPdfPassword.bank_key == key)
+        .first()
+    )
+    if not row:
+        row = BankPdfPassword(user_id=str(current_user.id), bank_name=bank_name, bank_key=key)
+        db.add(row)
+    row.bank_name = bank_name
+    row.password_encrypted = secret_box.encrypt(payload.password)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/pdf-passwords/{password_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_bank_password(password_id: str, db: DbDep, current_user: CurrentUserDep):
+    row = (
+        db.query(BankPdfPassword)
+        .filter(BankPdfPassword.id == password_id, BankPdfPassword.user_id == str(current_user.id))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contraseña no encontrada")
+    db.delete(row)
+    db.commit()
 
 
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)
