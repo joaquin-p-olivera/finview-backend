@@ -19,6 +19,7 @@ from ..schemas.email_import import (
     EmailImportItem,
     EmailImportOverview,
     GmailConfirmation,
+    NotificationsUpdate,
 )
 from ..services import email_import, secret_box
 from .statements import processing_timed_out
@@ -96,6 +97,7 @@ def _overview(db: Session, user: User) -> EmailImportOverview:
     )
     return EmailImportOverview(
         enabled=True,
+        notifications=user.email_notifications,
         address=email_import.import_address(token),
         gmail_confirmation=GmailConfirmation(
             code=(confirmation.details or {}).get("code"),
@@ -172,6 +174,14 @@ def delete_bank_password(password_id: str, db: DbDep, current_user: CurrentUserD
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contraseña no encontrada")
     db.delete(row)
     db.commit()
+
+
+@router.put("/notifications", response_model=EmailImportOverview)
+def set_notifications(body: NotificationsUpdate, db: DbDep, current_user: CurrentUserDep):
+    """Turns on or off the email sent when a statement arrives (or fails to import)."""
+    current_user.email_notifications = body.enabled
+    db.commit()
+    return _overview(db, current_user)
 
 
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)

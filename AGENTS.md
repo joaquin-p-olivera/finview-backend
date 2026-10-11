@@ -40,7 +40,7 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
 | `EXTERNAL_IMPORT_ALLOWED_EMAIL` | Only this account can use `POST /api/v1/statements/external` | No |
 | `EMAIL_IMPORT_ADDRESS` | Gmail inbox users forward their bank emails to (`app/services/email_import.py`). Each user gets `local+TOKEN@domain`. Without it (or the app password) import by email is off | No |
-| `EMAIL_IMPORT_APP_PASSWORD` | Gmail app password for that inbox (needs 2-step verification), used over IMAP | No |
+| `EMAIL_IMPORT_APP_PASSWORD` | Gmail app password for that inbox (needs 2-step verification), used over IMAP and to send the notice emails over SMTP | No |
 | `EMAIL_IMPORT_IMAP_HOST` | IMAP server (default `imap.gmail.com`) | No |
 | `EMAIL_IMPORT_CRON_SECRET` | Secret the cron sends as `X-Cron-Secret` to `POST /api/v1/email-import/run` | No |
 
@@ -86,7 +86,7 @@ app/
 
 | Table | Description |
 |-------|-------------|
-| `users` | User accounts |
+| `users` | User accounts (`email_notifications`: send the import notice email) |
 | `purchase_carts` | Shopping carts (active/completed) |
 | `purchase_cart_items` | Items in carts |
 | `purchase_lists` | Shopping lists (planning) |
@@ -117,6 +117,7 @@ module (see below for that).
 | POST | `/statements/{id}/confirm` | Save reviewed/edited transactions as confirmed |
 | DELETE | `/statements/{id}` | Delete a statement |
 | GET | `/email-import` | Import by email: `enabled`, the user's forwarding `address` (created on first call), Gmail's latest forwarding confirmation (`code`, `link`, last 7 days) and the last 20 imported attachments with their statement status |
+| PUT | `/email-import/notifications` | Body `{enabled}`: turns the notice email on or off for the user (`users.email_notifications`, on by default; also returned as `notifications` by `GET /email-import`). When the import inbox handles a PDF the user gets an email (`app/services/email_notice.py`): bank, period, totals per currency and a link to review it, or the reason it failed (e.g. protected PDF). Sent through Gmail SMTP (`smtp.gmail.com:587`) from the import inbox itself with `EMAIL_IMPORT_ADDRESS` / `EMAIL_IMPORT_APP_PASSWORD`, to the user's email (never their `+TOKEN` address); the link and the logo (`apple-touch-icon.png`) use the first non-localhost `CORS_ORIGINS` entry (without one the email has neither). Subjects start with `Finview - `. Best effort: a send error is only logged. Nothing is sent for duplicates or emails without a PDF |
 | POST | `/email-import/token` | New forwarding address; the old one stops working |
 | GET | `/email-import/pdf-passwords` | Banks with a saved PDF password (`id`, `bank_name`, `updated_at`; the password is never returned) |
 | PUT | `/email-import/pdf-passwords` | Save `{bank_name, password}` (encrypted); replaces the one for that bank, ignoring case |
