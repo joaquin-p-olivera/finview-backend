@@ -44,6 +44,7 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `EMAIL_IMPORT_IMAP_HOST` | IMAP server (default `imap.gmail.com`) | No |
 | `RESEND_API_KEY` | Resend API key. When set, notice emails (`app/services/email_notice.py`) are sent through Resend over HTTPS; otherwise through the import inbox's Gmail SMTP, which Render's free plan blocks (outbound ports 25, 465, 587). Without a verified domain Resend only delivers to the email of the Resend account | No |
 | `RESEND_FROM` | Sender of those emails (default `Finview <onboarding@resend.dev>`; with a verified domain, an address on it) | No |
+| `GOOGLE_CLIENT_ID` | OAuth client ID (type "Web application") from Google Cloud Console, with the frontend URLs as authorized JavaScript origins. The frontend needs the same value as `VITE_GOOGLE_CLIENT_ID`. Without it `POST /auth/google` answers 503 | No |
 | `EMAIL_IMPORT_CRON_SECRET` | Secret the cron sends as `X-Cron-Secret` to `POST /api/v1/email-import/run` | No |
 
 ### Environment Files
@@ -111,7 +112,8 @@ module (see below for that).
 |--------|----------|-------------|
 | POST | `/auth/register` | Create a user |
 | POST | `/auth/login` | OAuth2 password flow (form-encoded `username`/`password`, `username` holds the email); returns `{access_token, token_type}` |
-| GET | `/auth/me` | Current user |
+| POST | `/auth/google` | Sign in or sign up with Google: `{credential}` (the ID token from Google Identity Services); links an existing user with the same email or creates one without a password; returns `{access_token, token_type, is_new_user}` |
+| GET | `/auth/me` | Current user (`has_password`, `google_linked`) |
 | POST | `/statements/` | Upload a PDF statement (multipart); creates a `Statement`, parses it in the background, status starts as `processing` |
 | GET | `/statements/` | List the user's statements |
 | GET | `/statements/{id}/status` | Poll parse status (`processing` → `pending_review` or `error`) |

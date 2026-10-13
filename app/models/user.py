@@ -15,7 +15,10 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # NULL for accounts created with Google, which only sign in through it
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Google's id for the account ("sub" of its ID token), set on the first Google sign-in
+    google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     # secret part of the user's email import address (finview.import+TOKEN@gmail.com)
     import_token: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     # email the user when the import inbox handles one of their statements
@@ -28,6 +31,14 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    @property
+    def has_password(self) -> bool:
+        return bool(self.password_hash)
+
+    @property
+    def google_linked(self) -> bool:
+        return bool(self.google_id)
 
     categories: Mapped[list["Category"]] = relationship(
         "Category",
