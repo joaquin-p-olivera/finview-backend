@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # which hosts like Render's free plan block
     RESEND_API_KEY: str | None = None
     RESEND_FROM: str = "Finview <onboarding@resend.dev>"
+    # OAuth client ID (web application) from Google Cloud Console; without it login with Google is off
+    GOOGLE_CLIENT_ID: str | None = None
     EXTERNAL_IMPORT_SECRET: str | None = None
     EXTERNAL_IMPORT_ALLOWED_EMAIL: str | None = None
 

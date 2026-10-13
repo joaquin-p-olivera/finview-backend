@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Sign in or sign up with Google: `POST /api/v1/auth/google` takes the ID token Google Identity Services gives the frontend (`{credential}`), checks it with `google-auth` against `GOOGLE_CLIENT_ID` (only verified emails) and returns the usual token plus `is_new_user`. An existing user with the same email is linked to the Google account and keeps its password and data; otherwise a new user is created without a password (username from the email), which can only sign in with Google. `GET /api/v1/auth/me` adds `has_password` and `google_linked`. Needs `GOOGLE_CLIENT_ID` and `sql/2026-10-13-google-login.sql` run on the database before deploying. ([#PR](https://github.com/joaquin-p-olivera/finview-backend/pull/PR))
+
 ## [1.6.0] - 11 Oct 2026
 
 ### Added
