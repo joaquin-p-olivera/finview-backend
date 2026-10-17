@@ -35,6 +35,8 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
 | `ANTHROPIC_API_KEY` | Claude API key, used to parse statement PDFs (`app/services/statement_parser.py`) and categorize purchase products (`app/services/purchase_ai.py`). Without it both are off | No |
 | `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
+| `PURCHASE_ASK_MODEL` | Claude model that answers questions about purchases (`app/services/purchase_ask.py`, default `claude-sonnet-5-5`) | No |
+| `PURCHASE_ASK_DAILY_LIMIT` | Questions about purchases each user can ask per day, Uruguay time (default 10) | No |
 | `STATEMENT_PARSER_MODEL` | Claude model that parses statement PDFs (default `claude-sonnet-5`, same as the Apps Script) | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
 | `EXTERNAL_IMPORT_SECRET` | Shared secret required (as `X-External-Import-Key` header) to call `POST /api/v1/statements/external` | No |
@@ -100,6 +102,7 @@ app/
 | `email_imports` | What the import inbox received for a user: one row per PDF attachment (`kind=statement`, with `statement_id`) or Gmail's forwarding confirmation (`kind=gmail_confirmation`, code and link in `details`). The email itself is deleted. `users.import_token` is the user's forwarding address token and `statements.source` is `upload`, `email` or null (older rows) |
 | `bank_pdf_passwords` | Per user and bank (unique on `user_id` + lowercase `bank_key`), the password of that bank's protected statement PDFs, Fernet-encrypted in `password_encrypted`. The email import tries them on protected PDFs, banks named in the sender, subject or filename first |
 | `purchase_product_aliases` | Normalized names (`app/services/purchase_products.normalize_name`) that map to a product, so "Limones" finds "Limon" |
+| `purchase_questions` | Questions asked with `POST /purchase/ask`: the question, Claude's answer and optional table (`answer_table`), and the tokens used. History and daily limit |
 
 There is no `create_all` at startup. Schema changes are SQL scripts in `sql/`, run by hand on Postgres (Render) before deploying the code that needs them.
 
@@ -173,6 +176,8 @@ Independent from expense tracking. Uses `purchase_` prefix for all tables.
 | POST | `/purchase/products/link-items` | Link those items to products by name; safe to repeat |
 | GET | `/purchase/analytics?months=12&carts=12` | Analysis of completed carts (Uruguay time, `months=0` = all): spend per category per month and per cart, category totals and colors, top products, price changes (last vs previous price), personal inflation index (geometric mean of price ratios of products bought in consecutive months) and cheapest store per product. Logic in `app/services/purchase_analytics.py` |
 | GET | `/purchase/analytics/products/{id}/prices` | Every price paid for a product, with date and store |
+| GET | `/purchase/ask` | Questions in plain language: `enabled`, `daily_limit`, `remaining_today` and the last 10 questions with their answers |
+| POST | `/purchase/ask` | `{question}` (up to 500 characters): Claude answers about the user's completed carts with read-only tools over `purchase_analytics` data (catalog, spending grouped by period/category/store/product/cart, product prices, price changes, store comparison, basket index); no SQL from the model, always the logged-in user's data. Returns `{id, question, answer, table, created_at, remaining_today}` (`table` is `{columns, rows}` or null) and saves it in `purchase_questions`. 429 past the daily limit, 503 without `ANTHROPIC_API_KEY`, 502 if Claude fails. Logic in `app/services/purchase_ask.py` |
 | GET | `/purchase/stores` | List the user's supermarkets, most used first |
 | POST | `/purchase/stores` | Create a supermarket (names are unique per user, ignoring case) |
 | PUT | `/purchase/stores/{id}` | Rename a supermarket; also renames `store_name` on its carts |
