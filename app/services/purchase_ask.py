@@ -220,7 +220,7 @@ def remaining_today(db: Session, user_id: str) -> int:
     return max(0, get_settings().PURCHASE_ASK_DAILY_LIMIT - questions_today(db, user_id))
 
 
-def history(db: Session, user_id: str, limit: int = 20) -> list[PurchaseQuestion]:
+def history(db: Session, user_id: str, limit: int = 10) -> list[PurchaseQuestion]:
     return (
         db.query(PurchaseQuestion)
         .filter(PurchaseQuestion.user_id == user_id)

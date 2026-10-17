@@ -1297,7 +1297,7 @@ def _question_read(record) -> PurchaseQuestionRead:
 
 @router.get("/ask", response_model=PurchaseAskStatus)
 def get_ask_status(db: DbDep, current_user: CurrentUserDep):
-    """Whether questions are on, how many are left today and the last 20 asked."""
+    """Whether questions are on, how many are left today and the last 10 asked."""
     user_id = str(current_user.id)
     return PurchaseAskStatus(
         enabled=purchase_ask.is_configured(),
