@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.user import User
-from ..schemas.auth import Token, UserCreate, UserLogin, UserRead, UserUpdate
+from ..config import get_settings
+from ..schemas.auth import GoogleLogin, GoogleToken, Token, UserCreate, UserLogin, UserRead, UserUpdate
 from ..services.auth_service import create_access_token, get_password_hash, verify_password
+from ..services.google_auth import GoogleLoginError, user_for_google, verify_credential
 from ..dependencies import get_current_user
 
 
@@ -47,7 +49,8 @@ def login(
     db: DbDep,
 ) -> Token:
     user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.password_hash):
+    # accounts created with Google have no password
+    if not user or not user.password_hash or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Credenciales inválidas",
@@ -57,6 +60,24 @@ def login(
         data={"sub": str(user.id)},
     )
     return Token(access_token=access_token)
+
+
+@router.post("/google", response_model=GoogleToken)
+def login_google(body: GoogleLogin, db: DbDep) -> GoogleToken:
+    """Sign in or sign up with a Google ID token. Links an existing account with the
+    same email, or creates one without a password."""
+    if not get_settings().GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El login con Google no está configurado",
+        )
+    try:
+        user, created = user_for_google(db, verify_credential(body.credential))
+    except GoogleLoginError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    access_token = create_access_token(data={"sub": str(user.id)})
+    return GoogleToken(access_token=access_token, is_new_user=created)
 
 
 @router.get("/me", response_model=UserRead)

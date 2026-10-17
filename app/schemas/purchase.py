@@ -211,3 +211,31 @@ class PurchaseListRead(PurchaseListBase):
 
 class PurchaseListWithItems(PurchaseListRead):
     items: List[PurchaseListItemRead] = []
+
+
+class PurchaseQuestionAsk(BaseModel):
+    question: str
+
+
+class PurchaseAnswerTable(BaseModel):
+    columns: List[str]
+    rows: List[List[str]]
+
+
+class PurchaseQuestionRead(BaseModel):
+    id: str
+    question: str
+    answer: str
+    table: Optional[PurchaseAnswerTable] = None
+    created_at: datetime
+
+
+class PurchaseAskStatus(BaseModel):
+    enabled: bool
+    daily_limit: int
+    remaining_today: int
+    history: List[PurchaseQuestionRead]
+
+
+class PurchaseAskResult(PurchaseQuestionRead):
+    remaining_today: int

@@ -23,6 +23,8 @@ class UserUpdate(BaseModel):
 
 class UserRead(UserBase):
     id: str
+    has_password: bool
+    google_linked: bool
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +34,16 @@ class UserRead(UserBase):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class GoogleLogin(BaseModel):
+    # the ID token Google Identity Services hands the frontend
+    credential: str
+
+
+class GoogleToken(Token):
+    # True when this sign-in created the account, so the frontend can show the onboarding
+    is_new_user: bool = False
 
 
 class TokenData(BaseModel):
