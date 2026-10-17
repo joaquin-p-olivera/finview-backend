@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.0] - 17 Oct 2026
+
 ### Added
 
 - Questions about purchases in plain language: `POST /api/v1/purchase/ask` with `{question}` (for example "¿cuánto gasté en carne este año vs el pasado?") answers with a short text and an optional table. Claude gets read-only tools over the user's completed carts (catalog, spending grouped by period, category, store, product or cart, a product's prices, price changes, store comparison and personal inflation), never writes SQL and only sees the logged-in user's data. Each user can ask `PURCHASE_ASK_DAILY_LIMIT` questions a day (default 10); `GET /api/v1/purchase/ask` returns what's left today and the last 10 questions. Model configurable with `PURCHASE_ASK_MODEL` (default `claude-sonnet-5-5`); needs `ANTHROPIC_API_KEY` and `sql/2026-10-17-purchase-questions.sql` run on the database before deploying. ([#71](https://github.com/joaquin-p-olivera/finview-backend/pull/71))
