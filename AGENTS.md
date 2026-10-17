@@ -35,7 +35,7 @@ Create a `.env` file (copy from `.env.development` or `.env.production`).
 | `CORS_ORIGINS` | Comma-separated list of allowed origins | No |
 | `ANTHROPIC_API_KEY` | Claude API key, used to parse statement PDFs (`app/services/statement_parser.py`) and categorize purchase products (`app/services/purchase_ai.py`). Without it both are off | No |
 | `PURCHASE_AI_MODEL` | Claude model for purchase categorization (default `claude-opus-5-5`) | No |
-| `PURCHASE_ASK_MODEL` | Claude model that answers questions about purchases (`app/services/purchase_ask.py`, default `claude-opus-5-5`) | No |
+| `PURCHASE_ASK_MODEL` | Claude model that answers questions about purchases (`app/services/purchase_ask.py`, default `claude-sonnet-5-5`) | No |
 | `PURCHASE_ASK_DAILY_LIMIT` | Questions about purchases each user can ask per day, Uruguay time (default 20) | No |
 | `STATEMENT_PARSER_MODEL` | Claude model that parses statement PDFs (default `claude-sonnet-5`, same as the Apps Script) | No |
 | `MAX_FILE_SIZE_MB` | Max file size in MB | No |
