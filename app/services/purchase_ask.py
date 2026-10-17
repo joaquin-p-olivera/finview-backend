@@ -478,15 +478,15 @@ def answer_question(db: Session, user_id: str, question: str) -> PurchaseQuestio
             )
         except anthropic.APIError as exc:
             logger.exception("Purchase question request failed")
-            raise PurchaseAskError("No se pudo contactar a Claude. Probá de nuevo en un rato.") from exc
+            raise PurchaseAskError("No pudimos responder ahora. Probá de nuevo en un rato.") from exc
 
         input_tokens += response.usage.input_tokens or 0
         output_tokens += response.usage.output_tokens or 0
 
         if response.stop_reason == "refusal":
-            raise PurchaseAskError("Claude no pudo responder esa pregunta.")
+            raise PurchaseAskError("No pudimos responder esa pregunta. Probá escribirla de otra forma.")
         if response.stop_reason == "max_tokens":
-            raise PurchaseAskError("La respuesta de Claude quedó incompleta.")
+            raise PurchaseAskError("La respuesta quedó incompleta. Probá de nuevo.")
         if response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
             results = []
@@ -505,7 +505,7 @@ def answer_question(db: Session, user_id: str, question: str) -> PurchaseQuestio
 
         text = next((block.text for block in response.content if block.type == "text"), None)
         if text is None:
-            raise PurchaseAskError("Claude no devolvió una respuesta.")
+            raise PurchaseAskError("No pudimos armar una respuesta. Probá de nuevo.")
         data = json.loads(text)
         record = PurchaseQuestion(
             user_id=user_id,
