@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     PURCHASE_AI_MODEL: str = "claude-opus-5-5"
     STATEMENT_PARSER_MODEL: str = "claude-sonnet-5"
+    # Questions about purchases in plain language (POST /purchase/ask)
+    PURCHASE_ASK_MODEL: str = "claude-opus-5-5"
+    PURCHASE_ASK_DAILY_LIMIT: int = 20
     MAX_FILE_SIZE_MB: int = 20
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     # Import inbox: a Gmail account users forward their bank emails to, read over IMAP

@@ -21,6 +21,8 @@ from ..models.purchase import (
 )
 from ..models.user import User
 from ..schemas.purchase import (
+    PurchaseAskResult,
+    PurchaseAskStatus,
     PurchaseCartCreate,
     PurchaseCartItemCreate,
     PurchaseCartItemRead,
@@ -42,11 +44,14 @@ from ..schemas.purchase import (
     PurchaseProductMerge,
     PurchaseProductRead,
     PurchaseProductUpdate,
+    PurchaseQuestionAsk,
+    PurchaseQuestionRead,
     PurchaseStoreCreate,
     PurchaseStoreRead,
     PurchaseStoreUpdate,
 )
-from ..services import purchase_ai, purchase_analytics, purchase_products
+from ..config import get_settings
+from ..services import purchase_ai, purchase_analytics, purchase_ask, purchase_products
 
 
 router = APIRouter(prefix="/api/v1/purchase", tags=["purchase"])
@@ -1278,6 +1283,61 @@ def get_product_price_history(product_id: UUID, db: DbDep, current_user: Current
         "name": product.name,
         "prices": purchase_analytics.product_price_history(purchases, product.id),
     }
+
+
+def _question_read(record) -> PurchaseQuestionRead:
+    return PurchaseQuestionRead(
+        id=record.id,
+        question=record.question,
+        answer=record.answer,
+        table=record.answer_table,
+        created_at=record.created_at,
+    )
+
+
+@router.get("/ask", response_model=PurchaseAskStatus)
+def get_ask_status(db: DbDep, current_user: CurrentUserDep):
+    """Whether questions are on, how many are left today and the last 20 asked."""
+    user_id = str(current_user.id)
+    return PurchaseAskStatus(
+        enabled=purchase_ask.is_configured(),
+        daily_limit=get_settings().PURCHASE_ASK_DAILY_LIMIT,
+        remaining_today=purchase_ask.remaining_today(db, user_id),
+        history=[_question_read(q) for q in purchase_ask.history(db, user_id)],
+    )
+
+
+@router.post("/ask", response_model=PurchaseAskResult)
+def ask_about_purchases(payload: PurchaseQuestionAsk, db: DbDep, current_user: CurrentUserDep):
+    """Answer a question about the user's purchases with Claude and read-only tools."""
+    user_id = str(current_user.id)
+    question = " ".join(payload.question.split())
+    if not question:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escribí una pregunta.")
+    if len(question) > purchase_ask.MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La pregunta puede tener hasta {purchase_ask.MAX_QUESTION_LENGTH} caracteres.",
+        )
+    if not purchase_ask.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Las preguntas con IA no están configuradas (falta ANTHROPIC_API_KEY).",
+        )
+    if purchase_ask.remaining_today(db, user_id) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Llegaste al límite de preguntas de hoy. Mañana podés seguir preguntando.",
+        )
+    try:
+        record = purchase_ask.answer_question(db, user_id, question)
+    except purchase_ask.PurchaseAskError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return PurchaseAskResult(
+        **_question_read(record).model_dump(),
+        remaining_today=purchase_ask.remaining_today(db, user_id),
+    )
 
 
 @router.get("/stats")

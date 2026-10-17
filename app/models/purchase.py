@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func, text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -245,3 +245,30 @@ class PurchaseListItem(Base):
     )
 
     list: Mapped["PurchaseList"] = relationship("PurchaseList", back_populates="items")
+
+
+class PurchaseQuestion(Base):
+    """A question the user asked about their purchases and Claude's answer
+    (see app/services/purchase_ask.py). Kept as history and to count the
+    daily limit."""
+
+    __tablename__ = "purchase_questions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # {"columns": [...], "rows": [[...], ...]} or NULL when the answer has no table
+    answer_table: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
