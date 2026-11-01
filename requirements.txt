@@ -11,6 +11,6 @@ bcrypt>=5.0.0
 python-multipart==0.0.32
 email-validator==2.3.0
 anthropic==1.11.0
-pypdf==6.19.0
+pypdf==6.21.4
 google-auth==2.62.0
 requests==2.34.2
