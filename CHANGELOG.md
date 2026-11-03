@@ -7,6 +7,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.0] - 3 Nov 2026
+
+### Changed
+
+- Bump `anthropic` from 1.11.0 to 2.3.0. The SDK now sends API version `2026-10-21` and the API key as `Authorization: Bearer`; the app sends none of what that version rejects (`temperature`, `top_p`, `top_k`, documents in assistant turns, citations in user turns), so no code changes. ([#77](https://github.com/joaquin-p-olivera/finview-backend/pull/77))
+- Bump `fastapi` from 0.141.1 to 0.162.0. ([#76](https://github.com/joaquin-p-olivera/finview-backend/pull/76))
+- Bump `pydantic` from 2.13.5 to 2.14.2. ([#78](https://github.com/joaquin-p-olivera/finview-backend/pull/78))
+- Bump `pydantic-settings` from 2.15.0 to 2.16.2. ([#81](https://github.com/joaquin-p-olivera/finview-backend/pull/81))
+- Bump `SQLAlchemy` from 2.1.1 to 2.1.6. ([#79](https://github.com/joaquin-p-olivera/finview-backend/pull/79))
+- Bump `pypdf` from 6.19.0 to 6.21.4. ([#80](https://github.com/joaquin-p-olivera/finview-backend/pull/80))
+- Bump `alembic` from 1.20.0 to 1.20.1. ([#75](https://github.com/joaquin-p-olivera/finview-backend/pull/75))
+
 ## [1.7.0] - 17 Oct 2026
 
 ### Added
